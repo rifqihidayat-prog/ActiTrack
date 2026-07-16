@@ -1,9 +1,10 @@
-﻿import { getDashboardStats, getActivityBreakdown, getMonthlyActivity, getStoreRanking, getStores } from "@/lib/actions";
+﻿import { getDashboardStats, getActivityBreakdown, getMonthlyActivity, getStoreRanking, getStores, getComparisonTotals } from "@/lib/actions";
 import { StatCard } from "@/components/ui/stat-card";
 import ActivityBarChart from "@/components/charts/activity-bar";
 import MonthlyActivityChart from "@/components/charts/monthly-activity";
 import VoucherDonutChart from "@/components/charts/voucher-donut";
 import StoreRanking from "@/components/charts/store-ranking";
+import ComparisonChart from "@/components/charts/comparison-chart";
 import DashboardFilters from "@/components/ui/dashboard-filters";
 import { formatCurrency } from "@/lib/utils";
 import { DollarSign, TrendingUp, PiggyBank, Percent, Store, BarChart3, History } from "lucide-react";
@@ -18,6 +19,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const rankingData = await getStoreRanking(filters);
   const stores = await getStores();
   const costRatio = stats.totalRevenueAchieved > 0 ? (stats.totalActualCost / stats.totalRevenueAchieved * 100) : 0;
+  const comparisonData = await getComparisonTotals();
 
   return (
     <div className="space-y-6">
@@ -50,6 +52,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <VoucherDonutChart distributed={stats.totalVouchers} redeemed={stats.totalRedeemed} />
         <StoreRanking data={rankingData} />
       </div>
+
+      <ComparisonChart {...comparisonData} />
     </div>
   );
 }

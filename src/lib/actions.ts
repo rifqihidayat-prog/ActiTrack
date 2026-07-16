@@ -166,6 +166,33 @@ export async function getVoucherStoreBreakdown() {
   }).sort((a, b) => b.distributed - a.distributed);
 }
 
+export async function getComparisonTotals() {
+  const all = await db.query.submissions.findMany({
+    where: eq(submissions.approvalStatus, "Approved"),
+    with: { eventResult: true },
+  });
+  const withResult = all.filter(s => s.eventResult);
+  return {
+    totalLastSales: withResult.reduce((s, sub) => s + sub.lastMonthSales, 0),
+    totalSales: withResult.reduce((s, sub) => s + (sub.eventResult?.actualSales ?? 0), 0),
+    totalLastTx: withResult.reduce((s, sub) => s + sub.lastMonthTransactions, 0),
+    totalTx: withResult.reduce((s, sub) => s + (sub.eventResult?.transactionCount ?? 0), 0),
+  };
+}
+export async function getComparisonDetail(type: "sales" | "transactions") {
+  const all = await db.query.submissions.findMany({
+    where: eq(submissions.approvalStatus, "Approved"),
+    with: { eventResult: true },
+  });
+  return all
+    .filter(s => s.eventResult)
+    .map(s => ({
+      storeName: s.storeName,
+      lastValue: type === "sales" ? s.lastMonthSales : s.lastMonthTransactions,
+      actualValue: type === "sales" ? (s.eventResult?.actualSales ?? 0) : (s.eventResult?.transactionCount ?? 0),
+    }))
+    .sort((a, b) => b.actualValue - a.actualValue);
+}
 export async function getCalendarEvents() {
   const all = await db.query.submissions.findMany({ with: { budgets: true, eventResult: true } });
   return all.map(s => ({ id: s.id, title: `${s.storeName} - ${s.activationType}`, date: s.proposedDate, status: s.approvalStatus, picName: s.picName, description: s.descriptionTarget, totalBudget: s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0 }));
