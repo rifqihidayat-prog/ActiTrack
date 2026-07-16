@@ -53,7 +53,7 @@ export default function EventResultForm({ submissionId, initial, submission }: {
   const bep = totalCost > 0 ? (sales >= totalCost) : false;
   const profit = sales - totalCost;
 
-  const totalPromo = promoItems.reduce((s, p) => s + ((Number(p.quantity) || 0) * (Number(p.price) || 0)), 0);
+  const totalPromo = promoItems.reduce((s, p) => s + (unformat(String(p.quantity)) * unformat(String(p.price))), 0);
   const regularSales = Math.max(0, sales - totalPromo);
 
   const addItem = () => setCostItems(p => [...p, { budgetCategory: CATEGORIES[0].value, itemDescription: "", actualCost: "", _key: Math.random().toString() }]);
@@ -88,7 +88,7 @@ export default function EventResultForm({ submissionId, initial, submission }: {
         notes: form.notes,
       },
         costItems.map(c => ({ budgetCategory: c.budgetCategory, itemDescription: c.itemDescription, actualCost: unformat(String(c.actualCost)) || 0 })),
-        promoItems.map(p => ({ productName: p.productName, quantity: Number(p.quantity) || 0, price: Number(p.price) || 0 }))
+        promoItems.map(p => ({ productName: p.productName, quantity: unformat(String(p.quantity)), price: unformat(String(p.price)) }))
       );
       router.refresh();
       router.push(`/submissions/${submissionId}`);
@@ -179,7 +179,7 @@ export default function EventResultForm({ submissionId, initial, submission }: {
         )}
         <div className="space-y-3">
           {promoItems.map((item, idx) => {
-            const sub = (Number(item.quantity) || 0) * (Number(item.price) || 0);
+            const sub = unformat(String(item.quantity)) * unformat(String(item.price));
             return (
               <div key={item._key} className="flex gap-3 items-start p-3 rounded-xl border border-slate-100 bg-slate-50/50">
                 <div className="flex-1">
