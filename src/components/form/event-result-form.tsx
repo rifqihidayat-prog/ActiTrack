@@ -127,7 +127,7 @@ export default function EventResultForm({ submissionId, initial, submission }: {
             </div>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">BEP / Profit</p>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Status Biaya</p>
             <div className="flex items-center gap-2 mt-1">
               {bep ? <TrendingUp size={20} className="text-ga-green" /> : <TrendingDown size={20} className="text-ga-red" />}
               <p className="text-lg font-bold mt-1" style={{ color: bep ? "var(--ga-green)" : "var(--ga-red)" }}>
@@ -135,7 +135,7 @@ export default function EventResultForm({ submissionId, initial, submission }: {
               </p>
             </div>
             <p className="text-xs mt-1" style={{ color: bep ? "var(--ga-green)" : "var(--ga-red)" }}>
-              {bep ? "BEP Tercapai ✓" : "BEP Belum Tercapai"}
+              {bep ? "Tercapai ✓" : "Belum Tercapai"}
             </p>
           </div>
         </div>

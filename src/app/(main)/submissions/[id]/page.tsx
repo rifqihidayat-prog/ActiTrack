@@ -95,7 +95,7 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
           </div>
           {hasResult && bepReached !== null && (
             <div className="mt-3 text-xs font-semibold" style={{ color: bepReached ? "var(--ga-green)" : "var(--ga-red)" }}>
-              {bepReached ? "✓ BEP Tercapai" : "✗ BEP Tidak Tercapai (Biaya: " + formatCurrency(actualTotalCost) + ")"}
+              {bepReached ? "✓ Tercapai" : "✗ Belum Tercapai (Biaya: " + formatCurrency(actualTotalCost) + ")"}
             </div>
           )}
         </div>

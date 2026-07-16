@@ -38,7 +38,7 @@ export default async function RealisasiPage() {
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Trans</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">% Trans</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Biaya</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">BEP</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Status Biaya</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Aksi</th>
                 </tr>
               </thead>
@@ -94,11 +94,11 @@ export default async function RealisasiPage() {
                       <td className="px-4 py-3.5 text-center">
                         {bep === true ? (
                           <span className="inline-flex items-center gap-1 text-xs font-semibold text-ga-green">
-                            <CheckCircle size={14} /> BEP
+                            <CheckCircle size={14} /> Tercapai
                           </span>
                         ) : bep === false ? (
                           <span className="inline-flex items-center gap-1 text-xs font-semibold text-ga-red">
-                            <XCircle size={14} /> -
+                            <XCircle size={14} /> Belum Tercapai
                           </span>
                         ) : (
                           <span className="text-xs text-slate-400"><Minus size={14} className="inline" /></span>
@@ -135,7 +135,7 @@ export default async function RealisasiPage() {
           <p className="text-xl font-bold mt-1" style={{ color: "var(--ga-blue)" }}>{approved.filter(s => s.eventResult).length}</p>
         </div>
         <div className="ga-card p-4 text-center">
-          <p className="text-xs text-slate-500 uppercase tracking-wider">BEP Tercapai</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wider">Tertutup</p>
           <p className="text-xl font-bold mt-1" style={{ color: "var(--ga-green)" }}>{approved.filter(s => s.eventResult && s.eventResult.actualSales >= s.eventResult.actualTotalCost).length}</p>
         </div>
         <div className="ga-card p-4 text-center">
