@@ -165,6 +165,25 @@ export default async function SubmissionDetailPage({ params }: { params: Promise
                 </div>
               </div>
             )}
+            {sub.eventResult!.promoItems?.length > 0 && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Promo Khusus</p>
+                <div className="space-y-1.5">
+                  {sub.eventResult!.promoItems.map((p, i) => {
+                    const subTotal = p.quantity * p.price;
+                    return (
+                      <div key={i} className="flex justify-between text-sm">
+                        <div><span className="text-slate-700">{p.productName}</span> <span className="text-xs text-slate-400">{p.quantity} pcs × Rp {p.price.toLocaleString("id-ID")}</span></div>
+                        <span className="font-medium text-slate-900">{formatCurrency(subTotal)}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="border-t border-slate-200 pt-1.5 mt-1.5 flex justify-between text-sm font-bold text-slate-900">
+                    <span>Total Promo</span><span>{formatCurrency(sub.eventResult!.promoSales)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {sub.eventResult!.dealposRef && <p className="text-xs text-slate-400 mt-2">Ref: {sub.eventResult!.dealposRef}</p>}
             {sub.eventResult!.notes && <div className="mt-4 p-3 bg-slate-50 rounded-xl"><p className="text-xs text-slate-500 mb-1">Catatan Evaluasi</p><p className="text-sm text-slate-700">{sub.eventResult!.notes}</p></div>}
           </CardContent>
