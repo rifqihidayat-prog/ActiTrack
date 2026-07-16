@@ -11,7 +11,12 @@ export default function MonthlyActivityChart({ data }: { data: { month: string; 
   if (chartData.length === 0) return null;
 
   const handleClick = (entry: any) => {
-    if (entry?.month) router.push(`/activity?month=${String(Number(entry.month.substring(5, 7)))}&year=${entry.month.substring(0, 4)}`);
+    if (entry?.month) {
+      const startDate = entry.month + "-01";
+      const endDate = new Date(entry.month + "-01");
+      endDate.setMonth(endDate.getMonth() + 1, 0);
+      router.push(`/activity?startDate=${startDate}&endDate=${endDate.toISOString().substring(0, 10)}`);
+    }
   };
 
   return (

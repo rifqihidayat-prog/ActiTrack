@@ -10,9 +10,9 @@ import { formatCurrency } from "@/lib/utils";
 import { DollarSign, TrendingUp, PiggyBank, Percent, Store, BarChart3, History } from "lucide-react";
 import Link from "next/link";
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string; store?: string; type?: string; promo?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ startDate?: string; endDate?: string; store?: string; type?: string; promo?: string }> }) {
   const sp = await searchParams;
-  const filters = { month: sp.month, year: sp.year, storeName: sp.store, activationType: sp.type, promoFilter: sp.promo as "withoutPromo" | undefined };
+  const filters = { startDate: sp.startDate, endDate: sp.endDate, storeName: sp.store, activationType: sp.type, promoFilter: sp.promo as "withoutPromo" | undefined };
   const { stats, activityData, monthlyData, rankingData, stores, comparisonData } = await getDashboardData(filters);
   const costRatio = stats.totalRevenueAchieved > 0 ? (stats.totalActualCost / stats.totalRevenueAchieved * 100) : 0;
 

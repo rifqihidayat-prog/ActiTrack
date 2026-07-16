@@ -9,11 +9,11 @@ export type BudgetItemData = { budgetCategory: string; itemDescription: string; 
 export type EventResultData = { actualSales: number; transactionCount: number; voucherCode?: string; vouchersDistributed: number; vouchersRedeemed: number; actualTotalCost: number; promoSales: number; notes: string; };
 export type CostItemData = { budgetCategory: string; itemDescription: string; actualCost: number; };
 export type PromoItemData = { productName: string; quantity: number; price: number; };
-export type DashboardFilters = { month?: string; year?: string; storeName?: string; activationType?: string; promoFilter?: "all" | "withoutPromo" };
+export type DashboardFilters = { startDate?: string; endDate?: string; storeName?: string; activationType?: string; promoFilter?: "all" | "withoutPromo" };
 
 function filterByDate(sub: { proposedDate: string }, filters: DashboardFilters) {
-  if (filters.month && sub.proposedDate.substring(5, 7) !== filters.month.padStart(2, "0")) return false;
-  if (filters.year && sub.proposedDate.substring(0, 4) !== filters.year) return false;
+  if (filters.startDate && sub.proposedDate < filters.startDate) return false;
+  if (filters.endDate && sub.proposedDate > filters.endDate) return false;
   return true;
 }
 function filterSubmissions(subs: any[], filters: DashboardFilters) {

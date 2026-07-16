@@ -12,9 +12,9 @@ const typeLabels: Record<string, string> = {
 };
 const objLabels: Record<string, string> = { REVENUE: "Pendapatan", TRAFFIC: "Kunjungan" };
 
-export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string; store?: string; type?: string }> }) {
+export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ startDate?: string; endDate?: string; store?: string; type?: string }> }) {
   const sp = await searchParams;
-  const filters = { month: sp.month, year: sp.year, storeName: sp.store, activationType: sp.type };
+  const filters = { startDate: sp.startDate, endDate: sp.endDate, storeName: sp.store, activationType: sp.type };
   const subs = await getFilteredSubmissions(filters);
   const stores = await getStores();
 
