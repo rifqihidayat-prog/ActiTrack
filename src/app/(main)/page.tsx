@@ -1,4 +1,4 @@
-﻿import { getDashboardStats, getActivityBreakdown, getMonthlyActivity, getStoreRanking, getStores, getComparisonTotals } from "@/lib/actions";
+﻿import { getDashboardData } from "@/lib/actions";
 import { StatCard } from "@/components/ui/stat-card";
 import ActivityBarChart from "@/components/charts/activity-bar";
 import MonthlyActivityChart from "@/components/charts/monthly-activity";
@@ -13,13 +13,8 @@ import Link from "next/link";
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ month?: string; year?: string; store?: string; type?: string; promo?: string }> }) {
   const sp = await searchParams;
   const filters = { month: sp.month, year: sp.year, storeName: sp.store, activationType: sp.type, promoFilter: sp.promo as "withoutPromo" | undefined };
-  const stats = await getDashboardStats(filters);
-  const activityData = await getActivityBreakdown(filters);
-  const monthlyData = await getMonthlyActivity(filters);
-  const rankingData = await getStoreRanking(filters);
-  const stores = await getStores();
+  const { stats, activityData, monthlyData, rankingData, stores, comparisonData } = await getDashboardData(filters);
   const costRatio = stats.totalRevenueAchieved > 0 ? (stats.totalActualCost / stats.totalRevenueAchieved * 100) : 0;
-  const comparisonData = await getComparisonTotals();
 
   return (
     <div className="space-y-6">

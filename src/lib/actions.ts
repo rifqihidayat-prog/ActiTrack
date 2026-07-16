@@ -38,8 +38,8 @@ export async function updateSubmissionTarget(id: number, data: { targetValue?: n
 }
 export async function getSubmissions() { return await db.query.submissions.findMany({ orderBy: [desc(submissions.createdAt)] }); }
 export async function getPendingSubmissionCount() {
-  const all = await db.select({ id: submissions.id }).from(submissions).where(eq(submissions.approvalStatus, "Pending"));
-  return all.length;
+  const [row] = await db.select({ count: sql<number>`count(*)` }).from(submissions).where(eq(submissions.approvalStatus, "Pending"));
+  return row.count;
 }
 export async function getSubmissionById(id: number) { return await db.query.submissions.findFirst({ where: eq(submissions.id, id), with: { budgets: true, eventResult: { with: { costItems: true, promoItems: true } } } }); }
 export async function getSubmissionsWithDetails() { return await db.query.submissions.findMany({ orderBy: [desc(submissions.createdAt)], with: { budgets: true, eventResult: true } }); }
@@ -192,6 +192,87 @@ export async function getComparisonDetail(type: "sales" | "transactions") {
       actualValue: type === "sales" ? (s.eventResult?.actualSales ?? 0) : (s.eventResult?.transactionCount ?? 0),
     }))
     .sort((a, b) => b.actualValue - a.actualValue);
+}
+export async function getDashboardData(filters: DashboardFilters = {}) {
+  const all = await db.query.submissions.findMany({
+    with: { budgets: true, eventResult: { with: { costItems: true, promoItems: true } } },
+  });
+  const stores = [...new Set(all.map(s => s.storeName))].sort();
+  const filtered = filterSubmissions(all, filters);
+  const approved = filtered.filter(s => s.approvalStatus === "Approved");
+
+  const totalBudget = filtered.reduce((sum, s) => sum + (s.budgets?.reduce((b, bi) => b + bi.estimatedCost, 0) ?? 0), 0);
+  const subtractPromo = filters.promoFilter === "withoutPromo";
+  const effSales = (s: typeof approved[0]) => subtractPromo ? (s.eventResult?.actualSales ?? 0) - (s.eventResult?.promoSales ?? 0) : (s.eventResult?.actualSales ?? 0);
+  const totalSales = approved.reduce((s, sub) => s + effSales(sub), 0);
+  const totalActualCost = approved.reduce((s, sub) => s + (sub.eventResult?.actualTotalCost ?? 0), 0);
+  const totalVouchers = approved.reduce((s, sub) => s + (sub.eventResult?.vouchersDistributed ?? 0), 0);
+  const totalRedeemed = approved.reduce((s, sub) => s + (sub.eventResult?.vouchersRedeemed ?? 0), 0);
+  const totalTransactions = approved.reduce((s, sub) => s + (sub.eventResult?.transactionCount ?? 0), 0);
+  const withResults = approved.filter(s => s.eventResult);
+  const bepCount = withResults.filter(s => effSales(s) >= s.eventResult!.actualTotalCost).length;
+  const totalTargetRevenue = approved.reduce((s, sub) => s + (sub.managerTarget || sub.targetValue || 0), 0);
+  const totalRevenueAchieved = approved.reduce((s, sub) => s + effSales(sub), 0);
+
+  const stats = {
+    totalBudget, totalSales, totalActualCost, totalVouchers, totalRedeemed,
+    costEfficiency: totalActualCost > 0 ? ((totalSales - totalActualCost) / totalActualCost * 100) : 0,
+    voucherRate: totalVouchers > 0 ? (totalRedeemed / totalVouchers * 100) : 0,
+    bepRate: withResults.length > 0 ? (bepCount / withResults.length * 100) : 0,
+    bepCount, bepTotal: withResults.length,
+    totalTargetRevenue, totalRevenueAchieved,
+    totalPromoValue: approved.reduce((s, sub) => s + (sub.eventResult?.promoSales ?? 0), 0),
+    revenuePct: totalTargetRevenue > 0 ? (totalRevenueAchieved / totalTargetRevenue * 100) : 0,
+    salesTrend: filtered.filter(s => s.eventResult).sort((a, b) => a.proposedDate.localeCompare(b.proposedDate)).map(s => ({ name: s.storeName.substring(0, 10), sales: s.eventResult!.actualSales, date: s.proposedDate })),
+    budgetComparison: filtered.filter(s => s.budgets?.length > 0 && s.eventResult).slice(0, 10).map(s => ({ name: s.storeName.substring(0, 12), estimated: s.budgets!.reduce((sum, b) => sum + b.estimatedCost, 0), actual: s.eventResult!.actualTotalCost })),
+    totalSubmissions: filtered.length, approvedCount: approved.length, totalTransactions,
+  };
+
+  const actMap = new Map<string, { targetRev: number; actualSales: number; biaya: number; stores: { id: number; name: string; targetRev: number; actualSales: number; biaya: number; status: string }[] }>();
+  for (const s of filtered) {
+    const key = s.activationType;
+    if (!actMap.has(key)) actMap.set(key, { targetRev: 0, actualSales: 0, biaya: 0, stores: [] });
+    const entry = actMap.get(key)!;
+    const tRev = s.managerTarget || s.targetValue || 0;
+    entry.targetRev += tRev;
+    entry.actualSales += s.eventResult?.actualSales ?? 0;
+    entry.biaya += s.eventResult?.actualTotalCost ?? s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0;
+    entry.stores.push({ id: s.id, name: s.storeName, targetRev: tRev, actualSales: s.eventResult?.actualSales ?? 0, biaya: s.eventResult?.actualTotalCost ?? s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0, status: s.approvalStatus });
+  }
+  const activityData = Array.from(actMap.entries()).map(([name, data]) => ({ name, ...data }));
+
+  const monthMap = new Map<string, { count: number; approved: number; withResult: number }>();
+  for (const s of filtered) {
+    const month = s.proposedDate.substring(0, 7);
+    if (!monthMap.has(month)) monthMap.set(month, { count: 0, approved: 0, withResult: 0 });
+    const entry = monthMap.get(month)!;
+    entry.count++;
+    if (s.approvalStatus === "Approved") entry.approved++;
+    if (s.eventResult) entry.withResult++;
+  }
+  const monthlyData = Array.from(monthMap.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([month, data]) => ({ month, ...data }));
+
+  const rankMap = new Map<string, { storeName: string; totalEvents: number; targetHits: number; totalSales: number }>();
+  for (const s of filtered) {
+    if (!s.eventResult) continue;
+    if (!rankMap.has(s.storeName)) rankMap.set(s.storeName, { storeName: s.storeName, totalEvents: 0, targetHits: 0, totalSales: 0 });
+    const entry = rankMap.get(s.storeName)!;
+    entry.totalEvents++;
+    entry.totalSales += s.eventResult.actualSales;
+    const target = s.managerTarget || s.targetValue || 0;
+    if (target > 0 && s.eventResult.actualSales >= target) entry.targetHits++;
+  }
+  const rankingData = Array.from(rankMap.values()).sort((a, b) => b.targetHits - a.targetHits);
+
+  const approvedWithResult = approved.filter(s => s.eventResult);
+  const comparisonData = {
+    totalLastSales: approvedWithResult.reduce((s, sub) => s + sub.lastMonthSales, 0),
+    totalSales: approvedWithResult.reduce((s, sub) => s + (sub.eventResult?.actualSales ?? 0), 0),
+    totalLastTx: approvedWithResult.reduce((s, sub) => s + sub.lastMonthTransactions, 0),
+    totalTx: approvedWithResult.reduce((s, sub) => s + (sub.eventResult?.transactionCount ?? 0), 0),
+  };
+
+  return { stats, activityData, monthlyData, rankingData, stores, comparisonData };
 }
 export async function getCalendarEvents() {
   const all = await db.query.submissions.findMany({ with: { budgets: true, eventResult: true } });

@@ -6,8 +6,10 @@ import { getPendingSubmissionCount } from "@/lib/actions";
 export const dynamic = "force-dynamic";
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
-  const pendingCount = await getPendingSubmissionCount();
+  const [session, pendingCount] = await Promise.all([
+    getSession(),
+    getPendingSubmissionCount(),
+  ]);
 
   return (
     <div className="flex h-screen overflow-hidden">
