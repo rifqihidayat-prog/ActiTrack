@@ -20,8 +20,6 @@ function filterSubmissions(subs: any[], filters: DashboardFilters) {
   return subs.filter(s => {
     if (filters.storeName && s.storeName !== filters.storeName) return false;
     if (filters.activationType && s.activationType !== filters.activationType) return false;
-    if (filters.promoFilter === "withoutPromo" && (s.eventResult?.promoSales ?? 0) > 0) return false;
-    if (filters.promoFilter === "withPromo" && !(s.eventResult?.promoSales ?? 0) > 0) return false;
     return filterByDate(s, filters);
   });
 }
