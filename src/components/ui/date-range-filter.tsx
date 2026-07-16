@@ -28,18 +28,26 @@ export default function DateRangeFilter({ startDate, endDate, onApply }: Props) 
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setRange(startDate && endDate
+          ? { from: new Date(startDate + "T00:00:00"), to: new Date(endDate + "T00:00:00") }
+          : undefined);
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  }, [startDate, endDate]);
 
   const handleSelect = (r: DateRange | undefined) => {
     setRange(r);
-    if (r?.from && r?.to) {
-      onApply(format(r.from, "yyyy-MM-dd"), format(r.to, "yyyy-MM-dd"));
-      setOpen(false);
+  };
+
+  const handleApply = () => {
+    if (range?.from && range?.to) {
+      onApply(format(range.from, "yyyy-MM-dd"), format(range.to, "yyyy-MM-dd"));
     }
+    setOpen(false);
   };
 
   const handleReset = () => {
@@ -63,10 +71,17 @@ export default function DateRangeFilter({ startDate, endDate, onApply }: Props) 
       {open && (
         <div className="absolute top-full mt-1 left-0 z-50 bg-white rounded-2xl shadow-xl border border-slate-200 p-3">
           <DayPicker mode="range" selected={range} onSelect={handleSelect} />
-          <button onClick={handleReset}
-            className="w-full mt-2 text-center text-sm text-slate-500 hover:text-slate-700 py-1 rounded-lg hover:bg-slate-50 transition-colors">
-            Reset
-          </button>
+          <div className="flex gap-2 mt-3">
+            <button onClick={handleReset}
+              className="flex-1 text-center text-sm text-slate-500 hover:text-slate-700 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+              Reset
+            </button>
+            <button onClick={handleApply}
+              disabled={!range?.from || !range?.to}
+              className="flex-1 text-center text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 py-1.5 rounded-lg transition-colors">
+              Terapkan
+            </button>
+          </div>
         </div>
       )}
     </div>
