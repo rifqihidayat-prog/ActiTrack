@@ -3,7 +3,12 @@ node_modules
 .env
 .env.local
 .env.production
-src/db/*.db
-src/db/*.db-wal
-src/db/*.db-shm
+*.db
+*.db-wal
+*.db-shm
 next-env.d.ts
+test-*.cjs
+test-map-result.png
+auth
+auth-wal
+README.md
