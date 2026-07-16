@@ -233,9 +233,9 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
     const entry = actMap.get(key)!;
     const tRev = s.managerTarget || s.targetValue || 0;
     entry.targetRev += tRev;
-    entry.actualSales += s.eventResult?.actualSales ?? 0;
+    entry.actualSales += effSales(s);
     entry.biaya += s.eventResult?.actualTotalCost ?? s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0;
-    entry.stores.push({ id: s.id, name: s.storeName, targetRev: tRev, actualSales: s.eventResult?.actualSales ?? 0, biaya: s.eventResult?.actualTotalCost ?? s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0, status: s.approvalStatus });
+    entry.stores.push({ id: s.id, name: s.storeName, targetRev: tRev, actualSales: effSales(s), biaya: s.eventResult?.actualTotalCost ?? s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0, status: s.approvalStatus });
   }
   const activityData = Array.from(actMap.entries()).map(([name, data]) => ({ name, ...data }));
 
@@ -256,16 +256,16 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
     if (!rankMap.has(s.storeName)) rankMap.set(s.storeName, { storeName: s.storeName, totalEvents: 0, targetHits: 0, totalSales: 0 });
     const entry = rankMap.get(s.storeName)!;
     entry.totalEvents++;
-    entry.totalSales += s.eventResult.actualSales;
+    entry.totalSales += effSales(s);
     const target = s.managerTarget || s.targetValue || 0;
-    if (target > 0 && s.eventResult.actualSales >= target) entry.targetHits++;
+    if (target > 0 && effSales(s) >= target) entry.targetHits++;
   }
   const rankingData = Array.from(rankMap.values()).sort((a, b) => b.targetHits - a.targetHits);
 
   const approvedWithResult = approved.filter(s => s.eventResult);
   const comparisonData = {
     totalLastSales: approvedWithResult.reduce((s, sub) => s + sub.lastMonthSales, 0),
-    totalSales: approvedWithResult.reduce((s, sub) => s + (sub.eventResult?.actualSales ?? 0), 0),
+    totalSales: approvedWithResult.reduce((s, sub) => s + effSales(sub), 0),
     totalLastTx: approvedWithResult.reduce((s, sub) => s + sub.lastMonthTransactions, 0),
     totalTx: approvedWithResult.reduce((s, sub) => s + (sub.eventResult?.transactionCount ?? 0), 0),
   };
