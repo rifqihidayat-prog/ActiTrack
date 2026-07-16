@@ -28,7 +28,7 @@ export default function SubmissionWizard({ userStoreName, stores }: { userStoreN
 
   const updateForm = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  const activationTypes = ["GRAND_OPENING", "REGULER", "POP_UP", "ROADSHOW", "INSTORE", "LAINNYA"];
+  const activationTypes = ["Semarak Hijrahfood", "Senam", "Lomba", "Lainnya"];
 
   const totalBiaya = useMemo(() => budgets.reduce((s, b) => s + (unformat(b.estimatedCost) || 0), 0), [budgets]);
   const lastSales = unformat(form.lastMonthSales);
@@ -123,10 +123,13 @@ export default function SubmissionWizard({ userStoreName, stores }: { userStoreN
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Jenis Aktivasi</label>
-              <select value={form.activationType} onChange={e => updateForm("activationType", e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm bg-white">
+              <select value={!activationTypes.includes(form.activationType) ? "Lainnya" : form.activationType} onChange={e => updateForm("activationType", e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm bg-white">
                 <option value="">Pilih jenis...</option>
-                {activationTypes.map(t => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+                {activationTypes.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
+              {form.activationType === "Lainnya" && (
+                <input value="" onChange={e => updateForm("activationType", e.target.value)} placeholder="Ketik jenis aktivasi..." className="mt-2 w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm" />
+              )}
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Deskripsi Acara</label>

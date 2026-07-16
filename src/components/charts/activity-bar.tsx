@@ -5,8 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 
 const typeLabels: Record<string, string> = {
-  GRAND_OPENING: "Grand Opening", REGULER: "Reguler", POP_UP: "Pop Up",
-  ROADSHOW: "Roadshow", INSTORE: "Instore", LAINNYA: "Lainnya",
+  "Semarak Hijrahfood": "Semarak Hijrahfood", Senam: "Senam", Lomba: "Lomba", Lainnya: "Lainnya",
 };
 const COLORS = ["#6366f1", "#22c55e", "#f59e0b"];
 

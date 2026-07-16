@@ -1,13 +1,14 @@
 import { getFilteredSubmissions, getStores } from "@/lib/actions";
 import Link from "next/link";
+
+export const dynamic = "force-dynamic";
 import { Badge } from "@/components/ui/badge";
 import DashboardFilters from "@/components/ui/dashboard-filters";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { ArrowRight } from "lucide-react";
 
 const typeLabels: Record<string, string> = {
-  GRAND_OPENING: "Grand Opening", REGULER: "Reguler", POP_UP: "Pop Up",
-  ROADSHOW: "Roadshow", INSTORE: "Instore", LAINNYA: "Lainnya",
+  "Semarak Hijrahfood": "Semarak Hijrahfood", Senam: "Senam", Lomba: "Lomba", Lainnya: "Lainnya",
 };
 const objLabels: Record<string, string> = { REVENUE: "Pendapatan", TRAFFIC: "Kunjungan" };
 

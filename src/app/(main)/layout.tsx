@@ -3,6 +3,8 @@ import BottomNav from "@/components/ui/bottom-nav";
 import { getSession } from "@/lib/auth";
 import { getPendingSubmissionCount } from "@/lib/actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   const pendingCount = await getPendingSubmissionCount();

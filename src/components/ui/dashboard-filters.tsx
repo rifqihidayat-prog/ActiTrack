@@ -3,10 +3,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Filter } from "lucide-react";
 
 const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"][i] }));
-const actTypes = ["GRAND_OPENING", "REGULER", "POP_UP", "ROADSHOW", "INSTORE", "LAINNYA"];
+const actTypes = ["Semarak Hijrahfood", "Senam", "Lomba", "Lainnya"];
 const typeLabels: Record<string, string> = {
-  GRAND_OPENING: "Grand Opening", REGULER: "Reguler", POP_UP: "Pop Up",
-  ROADSHOW: "Roadshow", INSTORE: "Instore", LAINNYA: "Lainnya",
+  "Semarak Hijrahfood": "Semarak Hijrahfood", Senam: "Senam", Lomba: "Lomba", Lainnya: "Lainnya",
 };
 
 export default function DashboardFilters({ stores, showType }: { stores: string[]; showType?: boolean }) {
