@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.local
+.env.production
+src/db/*.db
+src/db/*.db-wal
+src/db/*.db-shm
+next-env.d.ts

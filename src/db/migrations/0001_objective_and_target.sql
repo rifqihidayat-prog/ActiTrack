@@ -1,0 +1,3 @@
+ALTER TABLE submissions ADD COLUMN objective_type TEXT NOT NULL DEFAULT 'REVENUE';
+ALTER TABLE submissions ADD COLUMN target_value REAL NOT NULL DEFAULT 0;
+ALTER TABLE submissions ADD COLUMN manager_target REAL DEFAULT 0;
