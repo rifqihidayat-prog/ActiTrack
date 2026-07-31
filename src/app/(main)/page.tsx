@@ -34,7 +34,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={DollarSign} label="Target Sales" value={formatCurrency(stats.totalTargetRevenue)} sub={`${stats.approvedCount} event approved`} />
         <StatCard icon={TrendingUp} label="Realisasi Sales" value={formatCurrency(stats.totalRevenueAchieved)} sub={`${stats.revenuePct.toFixed(0)}% dari target`} />
-        <StatCard icon={Percent} label="Cost Ratio" value={`${costRatio.toFixed(1)}%`} sub={`Biaya ${formatCurrency(stats.totalActualCost)} / Realisasi ${formatCurrency(stats.totalRevenueAchieved)}`} trend={{ up: costRatio <= 20, pct: costRatio <= 20 ? "Efisien" : "Boros" }} />
+        <StatCard icon={Percent} label="Cost Ratio" value={`${costRatio.toFixed(1)}%`} sub={`Biaya ${formatCurrency(stats.totalActualCost)} / Realisasi ${formatCurrency(stats.totalRevenueAchieved)}`} trend={{ status: costRatio <= 5 ? "good" : costRatio <= 10 ? "warn" : "bad", pct: costRatio <= 5 ? "Efisien" : costRatio <= 10 ? "Hati-hati" : "Boros" }} />
         <StatCard icon={PiggyBank} label="Biaya Riil" value={formatCurrency(stats.totalActualCost)} sub={`${stats.totalActualCost > 0 ? ((stats.totalBudget - stats.totalActualCost) / stats.totalBudget * 100).toFixed(0) : 0}% dari estimasi`} />
       </div>
 

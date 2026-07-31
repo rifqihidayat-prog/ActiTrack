@@ -1,7 +1,13 @@
 ﻿import { cn } from "@/lib/utils";
 import { type LucideIcon } from "lucide-react";
 
-export function StatCard({ icon: Icon, label, value, sub, trend }: { icon: LucideIcon; label: string; value: string; sub?: string; trend?: { up: boolean; pct: string } }) {
+export function StatCard({ icon: Icon, label, value, sub, trend }: { icon: LucideIcon; label: string; value: string; sub?: string; trend?: { status: "good" | "warn" | "bad"; pct: string } }) {
+  const trendStyle = {
+    good: { text: "text-ga-green", bg: "var(--ga-green-bg)", arrow: "↑" },
+    warn: { text: "text-amber-600", bg: "var(--ga-yellow-bg)", arrow: "→" },
+    bad: { text: "text-ga-red", bg: "var(--ga-red-bg)", arrow: "↓" },
+  }[trend?.status ?? "good"];
+
   return (
     <div className="ga-card p-5 hover:ga-card-hover transition-all duration-200 animate-fade-in">
       <div className="flex items-start justify-between mb-3">
@@ -9,9 +15,9 @@ export function StatCard({ icon: Icon, label, value, sub, trend }: { icon: Lucid
           <Icon size={18} />
         </div>
         {trend && (
-          <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", trend.up ? "text-ga-green" : "text-ga-red")}
-            style={{ background: trend.up ? "var(--ga-green-bg)" : "var(--ga-red-bg)" }}>
-            {trend.up ? "↑" : "↓"} {trend.pct}
+          <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", trendStyle.text)}
+            style={{ background: trendStyle.bg }}>
+            {trendStyle.arrow} {trend.pct}
           </span>
         )}
       </div>

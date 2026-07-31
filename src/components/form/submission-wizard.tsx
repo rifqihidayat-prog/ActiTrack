@@ -14,7 +14,7 @@ const objectives = [
   { value: "TRAFFIC", label: "Kunjungan (Traffic)", desc: "Target jumlah pengunjung toko" },
 ];
 
-const CT_RATIO = 0.06;
+const CT_RATIO = 0.10;
 
 export default function SubmissionWizard({ userStoreName, stores }: { userStoreName?: string; stores: string[] }) {
   const router = useRouter();

@@ -66,7 +66,7 @@ async function seed() {
       const s = stores[i];
       const budget = budgetsPool[i % budgetsPool.length];
       const totalBiaya = budget.reduce((sum, b) => sum + b.cost, 0);
-      const targetRev = Math.round(s.lastSales + totalBiaya / 0.06);
+      const targetRev = Math.round(s.lastSales + totalBiaya / 0.10);
       const targetTx = Math.round(s.lastTx * 1.5);
       const mgrTarget = s.obj === "TRAFFIC" ? 500 : 0;
 
