@@ -194,7 +194,7 @@ export default function SubmissionWizard({ userStoreName, stores }: { userStoreN
                 <span className="text-indigo-800">
                   Kenaikan Revenue:{' '}
                   <strong className="text-indigo-900">{(totalBiaya / CT_RATIO).toLocaleString("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong>
-                  {' '}(rasio biaya 6%)
+                  {' '}(rasio biaya 10%)
                 </span>
               </div>
               <div className="text-sm text-indigo-800">
