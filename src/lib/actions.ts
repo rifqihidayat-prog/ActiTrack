@@ -1,8 +1,9 @@
 ﻿"use server";
 import { db } from "@/db";
 import { submissions, submissionBudgets, eventResults, eventCostItems, eventPromoItems, users, surveyRoutes, surveyWaypoints, surveyPhotos } from "@/db/schema";
-import { eq, desc, sql, and, or } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { getSession } from "@/lib/auth";
 
 export type SubmissionData = { storeName: string; picName: string; proposedDate: string; activationType: string; descriptionTarget: string; objectiveType: string; lastMonthSales: number; lastMonthTransactions: number; targetValue: number; targetTransactions: number; };
 export type BudgetItemData = { budgetCategory: string; itemDescription: string; estimatedCost: number; };
@@ -24,29 +25,84 @@ function filterSubmissions(subs: any[], filters: DashboardFilters) {
   });
 }
 
+async function getUserStore(): Promise<string | null> {
+  const session = await getSession();
+  return session?.role === "user" && session.storeName ? session.storeName : null;
+}
+
+async function scopedFilters(filters: DashboardFilters = {}): Promise<DashboardFilters> {
+  const store = await getUserStore();
+  return store ? { ...filters, storeName: store } : filters;
+}
+
+async function requireAdmin() {
+  const session = await getSession();
+  if (session?.role !== "admin") throw new Error("Unauthorized: admin only");
+}
+
+async function requireOwnSubmission(id: number) {
+  const store = await getUserStore();
+  if (!store) return;
+  const sub = await db.query.submissions.findFirst({ where: eq(submissions.id, id), columns: { storeName: true } });
+  if (!sub || sub.storeName !== store) throw new Error("Forbidden");
+}
+
+async function requireOwnRoute(id: number) {
+  const store = await getUserStore();
+  if (!store) return;
+  const route = await db.query.surveyRoutes.findFirst({ where: eq(surveyRoutes.id, id), columns: { storeName: true } });
+  if (!route || route.storeName !== store) throw new Error("Forbidden");
+}
+
 export async function createSubmission(data: SubmissionData, budgets: BudgetItemData[]) {
-  const [sub] = await db.insert(submissions).values(data).returning({ id: submissions.id });
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  const payload = { ...data, storeName: session.role === "user" ? session.storeName : data.storeName };
+  const [sub] = await db.insert(submissions).values(payload).returning({ id: submissions.id });
   if (budgets.length > 0) await db.insert(submissionBudgets).values(budgets.map(b => ({ ...b, submissionId: sub.id })));
   revalidatePath("/"); revalidatePath("/calendar"); revalidatePath("/admin"); return sub.id;
 }
 
 export async function updateSubmissionTarget(id: number, data: { targetValue?: number; targetTransactions?: number; managerTarget?: number }) {
+  await requireOwnSubmission(id);
   await db.update(submissions).set(data).where(eq(submissions.id, id));
   revalidatePath("/"); revalidatePath("/admin");
 }
-export async function getSubmissions() { return await db.query.submissions.findMany({ orderBy: [desc(submissions.createdAt)] }); }
+export async function getSubmissions() {
+  const store = await getUserStore();
+  return await db.query.submissions.findMany({
+    where: store ? eq(submissions.storeName, store) : undefined,
+    orderBy: [desc(submissions.createdAt)],
+  });
+}
 export async function getPendingSubmissionCount() {
-  const [row] = await db.select({ count: sql<number>`count(*)` }).from(submissions).where(eq(submissions.approvalStatus, "Pending"));
+  const store = await getUserStore();
+  const cond = store ? and(eq(submissions.approvalStatus, "Pending"), eq(submissions.storeName, store)) : eq(submissions.approvalStatus, "Pending");
+  const [row] = await db.select({ count: sql<number>`count(*)` }).from(submissions).where(cond);
   return row.count;
 }
-export async function getSubmissionById(id: number) { return await db.query.submissions.findFirst({ where: eq(submissions.id, id), with: { budgets: true, eventResult: { with: { costItems: true, promoItems: true } } } }); }
-export async function getSubmissionsWithDetails() { return await db.query.submissions.findMany({ orderBy: [desc(submissions.createdAt)], with: { budgets: true, eventResult: true } }); }
+export async function getSubmissionById(id: number) {
+  const sub = await db.query.submissions.findFirst({ where: eq(submissions.id, id), with: { budgets: true, eventResult: { with: { costItems: true, promoItems: true } } } });
+  const store = await getUserStore();
+  if (sub && store && sub.storeName !== store) return null;
+  return sub;
+}
+export async function getSubmissionsWithDetails() {
+  const store = await getUserStore();
+  return await db.query.submissions.findMany({
+    where: store ? eq(submissions.storeName, store) : undefined,
+    orderBy: [desc(submissions.createdAt)],
+    with: { budgets: true, eventResult: true },
+  });
+}
 export async function updateApprovalStatus(id: number, status: string, opts?: { approvedBy?: string; managerTarget?: number }) {
+  await requireAdmin();
   const val: any = { approvalStatus: status }; if (opts?.approvedBy) val.approvedBy = opts.approvedBy; if (opts?.managerTarget) val.managerTarget = opts.managerTarget;
   await db.update(submissions).set(val).where(eq(submissions.id, id));
   revalidatePath("/"); revalidatePath("/calendar"); revalidatePath("/admin");
 }
 export async function submitEventResult(id: number, data: EventResultData, costItems?: CostItemData[], promoItems?: PromoItemData[]) {
+  await requireOwnSubmission(id);
   const totalPromo = (promoItems || []).reduce((s, p) => s + (p.quantity * p.price), 0);
   const existing = await db.select().from(eventResults).where(eq(eventResults.submissionId, id));
   if (existing.length > 0) {
@@ -68,6 +124,7 @@ export async function getCostItemsByResultId(resultId: number) {
   return await db.select().from(eventCostItems).where(eq(eventCostItems.resultId, resultId));
 }
 export async function getDashboardStats(filters: DashboardFilters = {}) {
+  filters = await scopedFilters(filters);
   const all = await db.query.submissions.findMany({ with: { budgets: true, eventResult: { with: { costItems: true, promoItems: true } } } });
   const allSubs = filterSubmissions(all, filters);
   const approved = allSubs.filter(s => s.approvalStatus === "Approved");
@@ -99,6 +156,7 @@ export async function getDashboardStats(filters: DashboardFilters = {}) {
     totalSubmissions: allSubs.length, approvedCount: approved.length, totalTransactions };
 }
 export async function getActivityBreakdown(filters: DashboardFilters = {}) {
+  filters = await scopedFilters(filters);
   const all = filterSubmissions(await db.query.submissions.findMany({ with: { budgets: true, eventResult: true } }), filters);
   const map = new Map<string, { targetRev: number; actualSales: number; biaya: number; stores: { id: number; name: string; targetRev: number; actualSales: number; biaya: number; status: string }[] }>();
   for (const s of all) {
@@ -117,6 +175,7 @@ export async function getActivityBreakdown(filters: DashboardFilters = {}) {
 }
 
 export async function getMonthlyActivity(filters: DashboardFilters = {}) {
+  filters = await scopedFilters(filters);
   const all = filterSubmissions(await db.query.submissions.findMany({ with: { eventResult: true } }), filters);
   const map = new Map<string, { count: number; approved: number; withResult: number }>();
   for (const s of all) {
@@ -131,6 +190,7 @@ export async function getMonthlyActivity(filters: DashboardFilters = {}) {
 }
 
 export async function getStoreRanking(filters: DashboardFilters = {}) {
+  filters = await scopedFilters(filters);
   const all = filterSubmissions(await db.query.submissions.findMany({ with: { eventResult: true } }), filters);
   const map = new Map<string, { storeName: string; totalEvents: number; targetHits: number; totalSales: number }>();
   for (const s of all) {
@@ -146,17 +206,21 @@ export async function getStoreRanking(filters: DashboardFilters = {}) {
 }
 
 export async function getStores() {
+  const store = await getUserStore();
+  if (store) return [store];
   const all = await db.select({ name: submissions.storeName }).from(submissions).groupBy(submissions.storeName).orderBy(submissions.storeName);
   return all.map(s => s.name);
 }
 
 export async function getFilteredSubmissions(filters: DashboardFilters = {}) {
+  filters = await scopedFilters(filters);
   const all = await db.query.submissions.findMany({ with: { budgets: true, eventResult: true }, orderBy: [desc(submissions.proposedDate)] });
   return filterSubmissions(all, filters);
 }
 
 export async function getVoucherStoreBreakdown() {
-  const all = await db.query.submissions.findMany({ with: { eventResult: true } });
+  const store = await getUserStore();
+  const all = await db.query.submissions.findMany({ where: store ? eq(submissions.storeName, store) : undefined, with: { eventResult: true } });
   return all.filter(s => s.eventResult && s.eventResult.vouchersDistributed > 0).map(s => {
     const distributed = s.eventResult!.vouchersDistributed;
     const redeemed = s.eventResult!.vouchersRedeemed;
@@ -165,8 +229,9 @@ export async function getVoucherStoreBreakdown() {
 }
 
 export async function getComparisonTotals() {
+  const store = await getUserStore();
   const all = await db.query.submissions.findMany({
-    where: eq(submissions.approvalStatus, "Approved"),
+    where: store ? and(eq(submissions.approvalStatus, "Approved"), eq(submissions.storeName, store)) : eq(submissions.approvalStatus, "Approved"),
     with: { eventResult: true },
   });
   const withResult = all.filter(s => s.eventResult);
@@ -178,8 +243,9 @@ export async function getComparisonTotals() {
   };
 }
 export async function getComparisonDetail(type: "sales" | "transactions") {
+  const store = await getUserStore();
   const all = await db.query.submissions.findMany({
-    where: eq(submissions.approvalStatus, "Approved"),
+    where: store ? and(eq(submissions.approvalStatus, "Approved"), eq(submissions.storeName, store)) : eq(submissions.approvalStatus, "Approved"),
     with: { eventResult: true },
   });
   return all
@@ -192,10 +258,13 @@ export async function getComparisonDetail(type: "sales" | "transactions") {
     .sort((a, b) => b.actualValue - a.actualValue);
 }
 export async function getDashboardData(filters: DashboardFilters = {}) {
+  filters = await scopedFilters(filters);
   const all = await db.query.submissions.findMany({
     with: { budgets: true, eventResult: { with: { costItems: true, promoItems: true } } },
   });
-  const stores = [...new Set(all.map(s => s.storeName))].sort();
+  const allStores = [...new Set(all.map(s => s.storeName))].sort();
+  const userStore = await getUserStore();
+  const stores = userStore ? [userStore] : allStores;
   const filtered = filterSubmissions(all, filters);
   const approved = filtered.filter(s => s.approvalStatus === "Approved");
 
@@ -273,7 +342,8 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
   return { stats, activityData, monthlyData, rankingData, stores, comparisonData };
 }
 export async function getCalendarEvents() {
-  const all = await db.query.submissions.findMany({ with: { budgets: true, eventResult: true } });
+  const store = await getUserStore();
+  const all = await db.query.submissions.findMany({ where: store ? eq(submissions.storeName, store) : undefined, with: { budgets: true, eventResult: true } });
   return all.map(s => ({ id: s.id, title: `${s.storeName} - ${s.activationType}`, date: s.proposedDate, status: s.approvalStatus, picName: s.picName, description: s.descriptionTarget, totalBudget: s.budgets?.reduce((sum, b) => sum + b.estimatedCost, 0) ?? 0 }));
 }
 
@@ -282,15 +352,19 @@ export async function getUsers() {
   return await db.select({ id: users.id, username: users.username, name: users.name, storeName: users.storeName, role: users.role, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt));
 }
 export async function getStoreList() {
+  const store = await getUserStore();
+  if (store) return [store];
   const rows = await db.select({ storeName: users.storeName }).from(users);
   return [...new Set(rows.map(r => r.storeName))].filter(Boolean).sort();
 }
 export async function createUser(data: { username: string; password: string; name: string; storeName: string; role: string }) {
+  await requireAdmin();
   const { hashPassword } = await import("@/lib/auth");
   await db.insert(users).values({ ...data, password: hashPassword(data.password) });
   revalidatePath("/admin/users");
 }
 export async function updateUser(id: number, data: { username?: string; password?: string; name?: string; storeName?: string; role?: string }) {
+  await requireAdmin();
   const upd: any = { ...data };
   if (data.password) {
     const { hashPassword } = await import("@/lib/auth");
@@ -300,31 +374,46 @@ export async function updateUser(id: number, data: { username?: string; password
   revalidatePath("/admin/users");
 }
 export async function deleteUser(id: number) {
+  await requireAdmin();
   await db.delete(users).where(eq(users.id, id));
   revalidatePath("/admin/users");
 }
 export async function deleteSubmission(id: number) {
+  await requireAdmin();
   await db.delete(submissions).where(eq(submissions.id, id));
   revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/calendar");
 }
 
 // === SURVEY ACTIONS ===
 export async function createSurveyRoute(data: { type: string; storeName: string; picName: string }) {
-  const [r] = await db.insert(surveyRoutes).values(data).returning({ id: surveyRoutes.id });
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  const payload = session.role === "user" ? { ...data, storeName: session.storeName } : data;
+  const [r] = await db.insert(surveyRoutes).values(payload).returning({ id: surveyRoutes.id });
   return r.id;
 }
 export async function updateSurveyRoute(id: number, data: { endTime?: string; totalDistance?: number; status?: string; notes?: string }) {
+  await requireOwnRoute(id);
   await db.update(surveyRoutes).set(data).where(eq(surveyRoutes.id, id));
 }
 export async function saveWaypoints(routeId: number, points: { lat: number; lng: number; accuracy?: number }[]) {
+  await requireOwnRoute(routeId);
   for (const p of points) await db.insert(surveyWaypoints).values({ routeId, lat: p.lat, lng: p.lng, accuracy: p.accuracy ?? null });
 }
 export async function saveSurveyPhoto(routeId: number, data: { lat: number; lng: number; photoData: string; caption?: string }) {
+  await requireOwnRoute(routeId);
   await db.insert(surveyPhotos).values({ routeId, ...data, caption: data.caption ?? "" });
 }
 export async function getSurveyRoutes() {
-  return await db.query.surveyRoutes.findMany({ orderBy: [desc(surveyRoutes.createdAt)] });
+  const store = await getUserStore();
+  return await db.query.surveyRoutes.findMany({
+    where: store ? eq(surveyRoutes.storeName, store) : undefined,
+    orderBy: [desc(surveyRoutes.createdAt)],
+  });
 }
 export async function getSurveyRouteById(id: number) {
-  return await db.query.surveyRoutes.findFirst({ where: eq(surveyRoutes.id, id), with: { waypoints: true, photos: true } });
+  const route = await db.query.surveyRoutes.findFirst({ where: eq(surveyRoutes.id, id), with: { waypoints: true, photos: true } });
+  const store = await getUserStore();
+  if (route && store && route.storeName !== store) return null;
+  return route;
 }

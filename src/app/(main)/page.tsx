@@ -1,4 +1,5 @@
 ﻿import { getDashboardData } from "@/lib/actions";
+import { getSession } from "@/lib/auth";
 import { StatCard } from "@/components/ui/stat-card";
 import ActivityBarChart from "@/components/charts/activity-bar";
 import MonthlyActivityChart from "@/components/charts/monthly-activity";
@@ -12,6 +13,7 @@ import Link from "next/link";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ startDate?: string; endDate?: string; store?: string; type?: string; promo?: string }> }) {
   const sp = await searchParams;
+  const session = await getSession();
   const filters = { startDate: sp.startDate, endDate: sp.endDate, storeName: sp.store, activationType: sp.type, promoFilter: sp.promo as "withoutPromo" | undefined };
   const { stats, activityData, monthlyData, rankingData, stores, comparisonData } = await getDashboardData(filters);
   const costRatio = stats.totalRevenueAchieved > 0 ? (stats.totalActualCost / stats.totalRevenueAchieved * 100) : 0;
@@ -29,7 +31,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </Link>
       </div>
 
-      <DashboardFilters stores={stores} />
+      <DashboardFilters stores={stores} showStore={session?.role !== "user"} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={DollarSign} label="Target Sales" value={formatCurrency(stats.totalTargetRevenue)} sub={`${stats.approvedCount} event approved`} />

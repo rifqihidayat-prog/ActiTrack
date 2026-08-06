@@ -8,7 +8,7 @@ const typeLabels: Record<string, string> = {
   "Semarak Hijrahfood": "Semarak Hijrahfood", Senam: "Senam", Lomba: "Lomba", Lainnya: "Lainnya",
 };
 
-export default function DashboardFilters({ stores, showType }: { stores: string[]; showType?: boolean }) {
+export default function DashboardFilters({ stores, showType, showStore = true }: { stores: string[]; showType?: boolean; showStore?: boolean }) {
   const router = useRouter();
   const sp = useSearchParams();
   const startDate = sp.get("startDate") || "";
@@ -46,11 +46,13 @@ export default function DashboardFilters({ stores, showType }: { stores: string[
         </select>
       )}
       <DateRangeFilter startDate={startDate} endDate={endDate} onApply={handleDateRange} />
-      <select value={store} onChange={e => apply("store", e.target.value)}
-        className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:border-indigo-400">
-        <option value="">Semua Toko</option>
-        {stores.map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
+      {showStore && (
+        <select value={store} onChange={e => apply("store", e.target.value)}
+          className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:border-indigo-400">
+          <option value="">Semua Toko</option>
+          {stores.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      )}
     </div>
   );
 }

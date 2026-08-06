@@ -16,8 +16,9 @@ const objectives = [
 
 const CT_RATIO = 0.10;
 
-export default function SubmissionWizard({ userStoreName, stores }: { userStoreName?: string; stores: string[] }) {
+export default function SubmissionWizard({ userStoreName, stores, userRole }: { userStoreName?: string; stores: string[]; userRole?: "admin" | "user" }) {
   const router = useRouter();
+  const isLockedStore = userRole === "user";
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -99,19 +100,25 @@ export default function SubmissionWizard({ userStoreName, stores }: { userStoreN
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 relative">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Nama Outlet</label>
-              <input value={search} onChange={e => { setSearch(e.target.value); updateForm("storeName", e.target.value); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} placeholder="Cari atau ketik nama outlet..." className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm" />
-              {showDropdown && (
-                <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                  {filteredStores.length > 0 ? filteredStores.map(s => (
-                    <button key={s} type="button" onMouseDown={() => { setSearch(s); updateForm("storeName", s); setShowDropdown(false); }}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors border-b border-slate-100 last:border-b-0 flex items-center gap-2">
-                      <Store size={14} className="text-slate-400 flex-shrink-0" />
-                      <span>{s}</span>
-                    </button>
-                  )) : (
-                    <div className="px-4 py-3 text-sm text-slate-400">Tidak ada outlet ditemukan</div>
+              {isLockedStore ? (
+                <input value={userStoreName} disabled className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 text-sm cursor-not-allowed" />
+              ) : (
+                <>
+                  <input value={search} onChange={e => { setSearch(e.target.value); updateForm("storeName", e.target.value); }} onFocus={() => setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} placeholder="Cari atau ketik nama outlet..." className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all text-sm" />
+                  {showDropdown && (
+                    <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {filteredStores.length > 0 ? filteredStores.map(s => (
+                        <button key={s} type="button" onMouseDown={() => { setSearch(s); updateForm("storeName", s); setShowDropdown(false); }}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-indigo-50 hover:text-indigo-700 transition-colors border-b border-slate-100 last:border-b-0 flex items-center gap-2">
+                          <Store size={14} className="text-slate-400 flex-shrink-0" />
+                          <span>{s}</span>
+                        </button>
+                      )) : (
+                        <div className="px-4 py-3 text-sm text-slate-400">Tidak ada outlet ditemukan</div>
+                      )}
+                    </div>
                   )}
-                </div>
+                </>
               )}
             </div>
             <div>

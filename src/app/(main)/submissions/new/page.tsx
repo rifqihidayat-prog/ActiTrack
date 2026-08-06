@@ -14,7 +14,7 @@ export default async function NewSubmissionPage() {
         <h1 className="text-2xl font-bold text-slate-900">Form Pengajuan Aktivasi</h1>
         <p className="text-sm text-slate-500 mt-1">Isi detail acara aktivasi toko baru</p>
       </div>
-      <SubmissionWizard userStoreName={session.storeName} stores={stores} />
+      <SubmissionWizard userStoreName={session.storeName} userRole={session.role} stores={stores} />
     </div>
   );
 }

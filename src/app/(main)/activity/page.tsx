@@ -1,4 +1,5 @@
 import { getFilteredSubmissions, getStores } from "@/lib/actions";
+import { getSession } from "@/lib/auth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ const objLabels: Record<string, string> = { REVENUE: "Pendapatan", TRAFFIC: "Kun
 
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ startDate?: string; endDate?: string; store?: string; type?: string }> }) {
   const sp = await searchParams;
+  const session = await getSession();
   const filters = { startDate: sp.startDate, endDate: sp.endDate, storeName: sp.store, activationType: sp.type };
   const subs = await getFilteredSubmissions(filters);
   const stores = await getStores();
@@ -25,7 +27,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         <p className="text-sm text-slate-500 mt-1">Semua data aktivasi toko dalam satu tampilan</p>
       </div>
 
-      <DashboardFilters stores={stores} showType />
+      <DashboardFilters stores={stores} showType showStore={session?.role !== "user"} />
 
       {subs.length === 0 ? (
         <div className="text-center py-20 text-slate-400">
