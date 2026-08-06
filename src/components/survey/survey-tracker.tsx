@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createSurveyRoute, updateSurveyRoute, saveWaypoints, saveSurveyPhoto } from "@/lib/actions";
 import Button from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Camera, Play, Square, Clock, Route, Navigation, MapPin, Store, User } f
 
 type Waypoint = { lat: number; lng: number; accuracy: number; timestamp: string };
 type Photo = { lat: number; lng: number; photoData: string; caption: string };
+type LatLng = { lat: number; lng: number };
 
 export default function SurveyTracker({ userStoreName, userName }: { userStoreName?: string; userName?: string }) {
   const router = useRouter();
@@ -17,8 +18,13 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
   const [watchId, setWatchId] = useState<number | null>(null);
   const [form, setForm] = useState({ storeName: userStoreName || "", picName: userName || "", type: "observasi" });
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [lastPos, setLastPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [livePoints, setLivePoints] = useState<LatLng[]>([]);
+  const [lastPos, setLastPos] = useState<LatLng | null>(null);
   const waypointsRef = useRef<Waypoint[]>([]);
+  const lastPosRef = useRef<LatLng | null>(null);
+  const distanceRef = useRef(0);
+  const startTimeRef = useRef(0);
+  const lastSaveTimeRef = useRef(0);
   const timerRef = useRef<any>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -27,32 +33,53 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
     const id = await createSurveyRoute(form);
     setRouteId(id);
     setTracking(true);
+    startTimeRef.current = Date.now();
     const wid = navigator.geolocation.watchPosition(
       (pos) => {
-        const wp = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, timestamp: new Date().toISOString() };
-        waypointsRef.current.push(wp);
-        if (lastPos) {
-          const d = haversine(lastPos.lat, lastPos.lng, wp.lat, wp.lng);
-          setDistance(prev => prev + d);
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const now = Date.now();
+        const wp: Waypoint = { lat, lng, accuracy: pos.coords.accuracy, timestamp: new Date(now).toISOString() };
+        if (lastPosRef.current) {
+          const d = haversine(lastPosRef.current.lat, lastPosRef.current.lng, lat, lng);
+          distanceRef.current += d;
+          setDistance(distanceRef.current);
+          if (d >= 10 || now - lastSaveTimeRef.current >= 5000) {
+            waypointsRef.current.push(wp);
+            lastSaveTimeRef.current = now;
+            setLivePoints(p => [...p, { lat, lng }]);
+          }
+        } else {
+          waypointsRef.current.push(wp);
+          lastSaveTimeRef.current = now;
+          setLivePoints(p => [...p, { lat, lng }]);
         }
-        setLastPos({ lat: wp.lat, lng: wp.lng });
+        lastPosRef.current = { lat, lng };
+        setLastPos({ lat, lng });
       },
       (err) => console.error("GPS error:", err),
       { enableHighAccuracy: true, maximumAge: 5000 }
     );
     setWatchId(wid);
-    timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000)), 1000);
   };
 
   const stopTracking = async () => {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     if (timerRef.current) clearInterval(timerRef.current);
-    if (routeId) {
+    if (!routeId) return;
+    try {
       await saveWaypoints(routeId, waypointsRef.current);
-      await updateSurveyRoute(routeId, { endTime: new Date().toISOString(), totalDistance: distance, status: "completed" });
-      router.push(`/survey/${routeId}`);
-      router.refresh();
+    } catch (e) {
+      console.error("Gagal menyimpan waypoint:", e);
     }
+    try {
+      await updateSurveyRoute(routeId, { endTime: new Date().toISOString(), totalDistance: distanceRef.current, status: "completed" });
+    } catch (e) {
+      console.error("Gagal menyelesaikan survey:", e);
+    }
+    router.push(`/survey/${routeId}`);
+    router.refresh();
   };
 
   const takePhoto = () => fileRef.current?.click();
@@ -65,7 +92,11 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
       const photoData = ev.target?.result as string;
       const photo = { lat: lastPos.lat, lng: lastPos.lng, photoData, caption: "" };
       setPhotos(p => [...p, photo]);
-      await saveSurveyPhoto(routeId, photo);
+      try {
+        await saveSurveyPhoto(routeId, photo);
+      } catch (err) {
+        console.error("Gagal simpan foto:", err);
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = "";
@@ -147,6 +178,9 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
             </p>
           )}
         </div>
+        <div className="mb-4">
+          <LiveMap points={livePoints} />
+        </div>
         {photos.length > 0 && (
           <div className="mb-4">
             <p className="text-xs font-medium mb-2" style={{ color: "var(--ga-text-muted)" }}>Foto ({photos.length})</p>
@@ -165,6 +199,50 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
       </div>
     </div>
   );
+}
+
+function LiveMap({ points, className = "" }: { points: LatLng[]; className?: string }) {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const Lref = useRef<any>(null);
+  const mapInstance = useRef<any>(null);
+  const lineRef = useRef<any>(null);
+  const pointsRef = useRef<LatLng[]>([]);
+  pointsRef.current = points;
+
+  useEffect(() => {
+    if (mapInstance.current) return;
+    let cancelled = false;
+    (async () => {
+      const L = (await import("leaflet")).default;
+      await import("leaflet/dist/leaflet.css");
+      if (cancelled || !mapRef.current) return;
+      Lref.current = L;
+      const map = L.map(mapRef.current, { zoomControl: false }).setView([-6.2, 106.8], 15);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap" }).addTo(map);
+      mapInstance.current = map;
+      const pts = pointsRef.current;
+      if (pts.length >= 2) {
+        lineRef.current = L.polyline(pts.map(p => [p.lat, p.lng]), { color: "#1a73e8", weight: 4, opacity: 0.85 }).addTo(map);
+        map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng] as [number, number])), { padding: [20, 20] });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const map = mapInstance.current;
+    const L = Lref.current;
+    if (!map || !L || points.length === 0) return;
+    if (!lineRef.current) {
+      lineRef.current = L.polyline(points.map(p => [p.lat, p.lng]), { color: "#1a73e8", weight: 4, opacity: 0.85 }).addTo(map);
+      map.fitBounds(L.latLngBounds(points.map(p => [p.lat, p.lng] as [number, number])), { padding: [20, 20] });
+    } else {
+      const last = points[points.length - 1];
+      lineRef.current.addLatLng([last.lat, last.lng]);
+    }
+  }, [points]);
+
+  return <div ref={mapRef} className={`w-full h-48 rounded-xl ${className}`} />;
 }
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {

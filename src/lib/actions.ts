@@ -398,7 +398,11 @@ export async function updateSurveyRoute(id: number, data: { endTime?: string; to
 }
 export async function saveWaypoints(routeId: number, points: { lat: number; lng: number; accuracy?: number }[]) {
   await requireOwnRoute(routeId);
-  for (const p of points) await db.insert(surveyWaypoints).values({ routeId, lat: p.lat, lng: p.lng, accuracy: p.accuracy ?? null });
+  if (points.length === 0) return;
+  const rows = points.map(p => ({ routeId, lat: p.lat, lng: p.lng, accuracy: p.accuracy ?? null }));
+  for (let i = 0; i < rows.length; i += 500) {
+    await db.insert(surveyWaypoints).values(rows.slice(i, i + 500));
+  }
 }
 export async function saveSurveyPhoto(routeId: number, data: { lat: number; lng: number; photoData: string; caption?: string }) {
   await requireOwnRoute(routeId);
@@ -415,5 +419,28 @@ export async function getSurveyRouteById(id: number) {
   const route = await db.query.surveyRoutes.findFirst({ where: eq(surveyRoutes.id, id), with: { waypoints: true, photos: true } });
   const store = await getUserStore();
   if (route && store && route.storeName !== store) return null;
+  if (route) {
+    const healed: any = { ...route, waypoints: route.waypoints || [], photos: route.photos || [] };
+    if (!healed.endTime && healed.waypoints.length > 0) {
+      const lastTs = healed.waypoints[healed.waypoints.length - 1].timestamp;
+      if (lastTs) healed.endTime = lastTs;
+    }
+    if ((!healed.totalDistance || healed.totalDistance <= 0) && healed.waypoints.length >= 2) {
+      let dist = 0;
+      for (let i = 1; i < healed.waypoints.length; i++) {
+        dist += haversine(healed.waypoints[i - 1].lat, healed.waypoints[i - 1].lng, healed.waypoints[i].lat, healed.waypoints[i].lng);
+      }
+      healed.totalDistance = dist;
+    }
+    return healed;
+  }
   return route;
+}
+
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

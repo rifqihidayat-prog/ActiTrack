@@ -34,23 +34,6 @@ async function fetchOSMTile(z: number, x: number, y: number): Promise<Buffer | n
   return null;
 }
 
-async function fetchOSRMRoute(waypoints: any[]): Promise<[number, number][] | null> {
-  if (waypoints.length < 2) return null;
-  const coords = waypoints.map((w: any) => `${w.lng},${w.lat}`).join(";");
-  try {
-    const res = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${coords}?geometries=geojson&overview=full`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.code !== "Ok" || !data.routes?.[0]?.geometry?.coordinates) return null;
-    return data.routes[0].geometry.coordinates;
-  } catch {
-    return null;
-  }
-}
-
 async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
   const W = 700, H = 400;
   if (waypoints.length < 2) return "";
@@ -125,13 +108,8 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
     return { x: p.x - vpLeft, y: p.y - vpTop };
   }
 
-  const osrmCoords = await fetchOSRMRoute(waypoints);
-  let routeCoords: { lat: number; lng: number }[];
-  if (osrmCoords) {
-    routeCoords = osrmCoords.map((c: number[]) => ({ lat: c[1], lng: c[0] }));
-  } else {
-    routeCoords = waypoints;
-  }
+  // Jejak GPS asli (belak-belok sesuai yang dijalani), tanpa OSRM
+  const routeCoords = simplifyPath(waypoints);
   const pts = routeCoords.map((w: any) => {
     const p = svgCoord(w.lat, w.lng);
     return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
@@ -289,13 +267,14 @@ ${waypoints.length > 0 ? `
     <tr><th style="width:10%">No</th><th style="width:30%">Latitude</th><th style="width:30%">Longitude</th><th style="width:30%">Akurasi (m)</th></tr>
   </thead>
   <tbody>
-    ${waypoints.map((w: any, i: number) => `
+    ${waypoints.slice(0, 100).map((w: any, i: number) => `
       <tr>
         <td style="text-align:center">${i + 1}</td>
         <td>${w.lat.toFixed(6)}</td>
         <td>${w.lng.toFixed(6)}</td>
         <td>${w.accuracy ? w.accuracy.toFixed(1) : "-"}</td>
       </tr>`).join("")}
+    ${waypoints.length > 100 ? `<tr><td colspan="4" style="color:#666">... dan ${waypoints.length - 100} titik waypoint lainnya.</td></tr>` : ""}
   </tbody>
 </table>` : '<p style="color:#666;font-size:11pt">Tidak ada data waypoint.</p>'}
 
@@ -347,4 +326,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     console.error("REPORT ERROR:", e?.message, e?.stack?.split("\n").slice(0, 5).join("\n"));
     return NextResponse.json({ error: e?.message || "Unknown error", stack: e?.stack?.split("\n").slice(0, 3).join("\n") }, { status: 500 });
   }
+}
+
+function simplifyPath(pts: any[]): { lat: number; lng: number }[] {
+  const out: { lat: number; lng: number }[] = [];
+  let last: { lat: number; lng: number } | null = null;
+  for (const p of pts) {
+    const lat = Number(p.lat), lng = Number(p.lng);
+    if (!last || haversine(last.lat, last.lng, lat, lng) >= 3) {
+      out.push({ lat, lng });
+      last = { lat, lng };
+    }
+  }
+  if (out.length === 0 && pts.length > 0) out.push({ lat: Number(pts[0].lat), lng: Number(pts[0].lng) });
+  return out;
+}
+
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
