@@ -1,3 +1,8 @@
 {
-  "buildCommand": "npx next build --webpack"
+  "buildCommand": "npx next build --webpack",
+  "functions": {
+    "app/api/survey/[id]/report/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }

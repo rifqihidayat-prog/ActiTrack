@@ -1,7 +1,7 @@
 export type LatLng = { lat: number; lng: number };
 export type GpsPoint = LatLng & { accuracy?: number | null; timestamp?: string | null };
 
-const ACC_MAX = 30;
+const ACC_MAX = 40;
 const SPEED_MAX = 12;
 const JUMP_MAX = 400;
 const MIN_STEP = 5;
