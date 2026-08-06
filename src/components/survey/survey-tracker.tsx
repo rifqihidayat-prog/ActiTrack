@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createSurveyRoute, updateSurveyRoute, saveWaypoints, saveSurveyPhoto } from "@/lib/actions";
+import { haversine } from "@/lib/gps";
 import Button from "@/components/ui/button";
 import { Camera, Play, Square, Clock, Route, Navigation, MapPin, Store, User } from "lucide-react";
 
@@ -22,6 +23,7 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
   const [lastPos, setLastPos] = useState<LatLng | null>(null);
   const waypointsRef = useRef<Waypoint[]>([]);
   const lastPosRef = useRef<LatLng | null>(null);
+  const lastTimeRef = useRef(0);
   const distanceRef = useRef(0);
   const startTimeRef = useRef(0);
   const lastSaveTimeRef = useRef(0);
@@ -39,23 +41,36 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const now = Date.now();
-        const wp: Waypoint = { lat, lng, accuracy: pos.coords.accuracy, timestamp: new Date(now).toISOString() };
-        if (lastPosRef.current) {
-          const d = haversine(lastPosRef.current.lat, lastPosRef.current.lng, lat, lng);
+        if (pos.coords.accuracy > 30) return;
+        if (!lastPosRef.current) {
+          const wp: Waypoint = { lat, lng, accuracy: pos.coords.accuracy, timestamp: new Date(now).toISOString() };
+          lastPosRef.current = { lat, lng };
+          lastTimeRef.current = now;
+          lastSaveTimeRef.current = now;
+          waypointsRef.current.push(wp);
+          setLivePoints(p => [...p, { lat, lng }]);
+          setLastPos({ lat, lng });
+          return;
+        }
+        const prev = lastPosRef.current;
+        const alpha = 0.4;
+        const sm: LatLng = { lat: prev.lat + alpha * (lat - prev.lat), lng: prev.lng + alpha * (lng - prev.lng) };
+        const d = haversine(prev.lat, prev.lng, sm.lat, sm.lng);
+        const dt = Math.max(1, (now - lastTimeRef.current) / 1000);
+        lastTimeRef.current = now;
+        if (d > 400 || d / dt > 12) return;
+        if (d >= 3) {
           distanceRef.current += d;
           setDistance(distanceRef.current);
-          if (d >= 10 || now - lastSaveTimeRef.current >= 5000) {
+          lastPosRef.current = sm;
+          if (d >= 5 || now - lastSaveTimeRef.current >= 5000) {
+            const wp: Waypoint = { ...sm, accuracy: pos.coords.accuracy, timestamp: new Date(now).toISOString() };
             waypointsRef.current.push(wp);
             lastSaveTimeRef.current = now;
-            setLivePoints(p => [...p, { lat, lng }]);
+            setLivePoints(p => [...p, sm]);
           }
-        } else {
-          waypointsRef.current.push(wp);
-          lastSaveTimeRef.current = now;
-          setLivePoints(p => [...p, { lat, lng }]);
         }
-        lastPosRef.current = { lat, lng };
-        setLastPos({ lat, lng });
+        setLastPos(sm);
       },
       (err) => console.error("GPS error:", err),
       { enableHighAccuracy: true, maximumAge: 5000 }
@@ -243,12 +258,4 @@ function LiveMap({ points, className = "" }: { points: LatLng[]; className?: str
   }, [points]);
 
   return <div ref={mapRef} className={`w-full h-48 rounded-xl ${className}`} />;
-}
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

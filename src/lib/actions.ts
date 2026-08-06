@@ -4,6 +4,7 @@ import { submissions, submissionBudgets, eventResults, eventCostItems, eventProm
 import { eq, desc, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
+import { trackDistance } from "@/lib/gps";
 
 export type SubmissionData = { storeName: string; picName: string; proposedDate: string; activationType: string; descriptionTarget: string; objectiveType: string; lastMonthSales: number; lastMonthTransactions: number; targetValue: number; targetTransactions: number; };
 export type BudgetItemData = { budgetCategory: string; itemDescription: string; estimatedCost: number; };
@@ -426,21 +427,9 @@ export async function getSurveyRouteById(id: number) {
       if (lastTs) healed.endTime = lastTs;
     }
     if ((!healed.totalDistance || healed.totalDistance <= 0) && healed.waypoints.length >= 2) {
-      let dist = 0;
-      for (let i = 1; i < healed.waypoints.length; i++) {
-        dist += haversine(healed.waypoints[i - 1].lat, healed.waypoints[i - 1].lng, healed.waypoints[i].lat, healed.waypoints[i].lng);
-      }
-      healed.totalDistance = dist;
+      healed.totalDistance = trackDistance(healed.waypoints);
     }
     return healed;
   }
   return route;
-}
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

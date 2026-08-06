@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSurveyRouteById } from "@/lib/actions";
+import { cleanTrack, matchRouteToRoads } from "@/lib/gps";
 import sharp from "sharp";
+import {
+  AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, ShadingType,
+  Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType,
+} from "docx";
 
 function worldPx(lat: number, lng: number, zoom: number) {
   const n = Math.pow(2, zoom);
@@ -44,20 +49,17 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
   const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
   const zoom = calcZoom(waypoints, W, H);
 
-  // Viewport in world pixel coords (centered on mid-point)
   const c = worldPx(centerLat, centerLng, zoom);
   const vpLeft = c.x - W / 2;
   const vpTop = c.y - H / 2;
   const vpRight = c.x + W / 2;
   const vpBottom = c.y + H / 2;
 
-  // Tile range covering the viewport
   const minTX = Math.floor(vpLeft / 256);
   const maxTX = Math.floor((vpRight - 1) / 256);
   const minTY = Math.floor(vpTop / 256);
   const maxTY = Math.floor((vpBottom - 1) / 256);
 
-  // Fetch all tiles in range
   const tilePromises: Promise<Buffer | null>[] = [];
   const tileCoords: { tx: number; ty: number }[] = [];
   for (let tx = minTX; tx <= maxTX; tx++) {
@@ -68,7 +70,6 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
   }
   const tileResults = await Promise.all(tilePromises);
 
-  // Composite tiles into a single image
   const tileW = (maxTX - minTX + 1) * 256;
   const tileH = (maxTY - minTY + 1) * 256;
   const layers: any[] = [];
@@ -92,7 +93,6 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
     }).png().toBuffer();
   }
 
-  // Crop to exact viewport
   const cropped = await sharp(tileImg)
     .extract({
       left: Math.round(vpLeft - minTX * 256),
@@ -102,14 +102,14 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
     })
     .png().toBuffer();
 
-  // SVG overlay dimensions match viewport
   function svgCoord(lat: number, lng: number) {
     const p = worldPx(lat, lng, zoom);
     return { x: p.x - vpLeft, y: p.y - vpTop };
   }
 
-  // Jejak GPS asli (belak-belok sesuai yang dijalani), tanpa OSRM
-  const routeCoords = simplifyPath(waypoints);
+  // Rute disnap ke jaringan jalan OSM (Valhalla), fallback ke jejak GPS bersih
+  const matched = await matchRouteToRoads(waypoints, 6000);
+  const routeCoords = matched && matched.length >= 2 ? matched : cleanTrack(waypoints);
   const pts = routeCoords.map((w: any) => {
     const p = svgCoord(w.lat, w.lng);
     return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
@@ -151,7 +151,57 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
   return composite.toString("base64");
 }
 
-function buildDoc(route: any, mapB64: string): string {
+const cellBorder = {
+  top: { style: BorderStyle.SINGLE, size: 4, color: "222222" },
+  bottom: { style: BorderStyle.SINGLE, size: 4, color: "222222" },
+  left: { style: BorderStyle.SINGLE, size: 4, color: "222222" },
+  right: { style: BorderStyle.SINGLE, size: 4, color: "222222" },
+};
+const lightCellBorder = {
+  top: { style: BorderStyle.SINGLE, size: 2, color: "999999" },
+  bottom: { style: BorderStyle.SINGLE, size: 2, color: "999999" },
+  left: { style: BorderStyle.SINGLE, size: 2, color: "999999" },
+  right: { style: BorderStyle.SINGLE, size: 2, color: "999999" },
+};
+
+function sectionTitle(text: string): Paragraph {
+  return new Paragraph({
+    children: [new TextRun({ text, bold: true, size: 26 })],
+    spacing: { before: 280, after: 140 },
+    border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: "333333", space: 3 } },
+  });
+}
+
+function cell(children: Paragraph[], opts: { fill?: string; border?: any; width?: number; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; vertical?: boolean } = {}): TableCell {
+  return new TableCell({
+    children,
+    shading: opts.fill ? { type: ShadingType.CLEAR, fill: opts.fill } : undefined,
+    borders: opts.border,
+    width: opts.width !== undefined ? { size: opts.width, type: WidthType.PERCENTAGE } : undefined,
+    verticalAlign: opts.vertical === false ? VerticalAlign.TOP : VerticalAlign.CENTER,
+  });
+}
+
+function textP(text: string, opts: { bold?: boolean; size?: number; color?: string; align?: (typeof AlignmentType)[keyof typeof AlignmentType] } = {}): Paragraph {
+  return new Paragraph({
+    children: [new TextRun({ text, bold: opts.bold, size: opts.size ?? 22, color: opts.color })],
+    alignment: opts.align,
+    spacing: { after: 60 },
+  });
+}
+
+async function photoBuffer(dataUri: string): Promise<Buffer | null> {
+  try {
+    const m = /^data:image\/(?:jpeg|jpg|png|heic);base64,(.+)$/.exec(dataUri);
+    if (!m) return null;
+    const buf = Buffer.from(m[1], "base64");
+    return await sharp(buf).rotate().resize({ width: 900, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+  } catch {
+    return null;
+  }
+}
+
+async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
   const waypoints = route.waypoints || [];
   const photos = route.photos || [];
   const distance = route.totalDistance ?? 0;
@@ -159,9 +209,10 @@ function buildDoc(route: any, mapB64: string): string {
   const endTime = route.endTime ? new Date(route.endTime) : null;
   const durationMs = endTime ? endTime.getTime() - startTime.getTime() : 0;
   const durationMin = Math.floor(durationMs / 60000);
+  const durStr = durationMin >= 60 ? `${Math.floor(durationMin / 60)} jam ${durationMin % 60} menit` : `${durationMin} menit`;
   const dateStr = startTime.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const typeStr = route.type === "observasi" ? "Observasi / Pengenalan Toko" : route.type === "mailer" ? "Sebar Mailer / Brosur" : route.type;
 
-  // Google Maps directions URL
   const waypointStr = waypoints.map((w: any) => `${w.lat},${w.lng}`).join("/");
   const lats = waypoints.map((w: any) => w.lat);
   const lngs = waypoints.map((w: any) => w.lng);
@@ -169,131 +220,129 @@ function buildDoc(route: any, mapB64: string): string {
   const cLng = ((Math.min(...lngs) + Math.max(...lngs)) / 2).toFixed(6);
   const gmapsUrl = `https://www.google.com/maps/dir/${waypointStr}/@${cLat},${cLng},15z`;
 
-  let photoRows = "";
-  if (photos.length > 0) {
-    const cols = 2;
-    for (let r = 0; r < Math.ceil(photos.length / cols); r++) {
-      const row = photos.slice(r * cols, r * cols + cols);
-      photoRows += `<tr>${row.map((p: any) => `
-      <td style="border:none;padding:0 15px 15px 0;text-align:left;vertical-align:top;width:50%">
-        <img src="${p.photoData}" width="315" height="267" style="width:236pt;height:200pt;border:1pt solid #999" />
-        <p>${p.caption || "Foto dokumentasi"}</p>
-        <p class="loc">Lokasi: ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}</p>
-      </td>`).join("")}
-    </tr>`;
-    }
+  const children: (Paragraph | Table)[] = [];
+
+  children.push(
+    new Paragraph({ children: [new TextRun({ text: "LAPORAN SURVEY LAPANGAN", bold: true, size: 34 })], alignment: AlignmentType.CENTER, spacing: { after: 60 } }),
+    new Paragraph({ children: [new TextRun({ text: "ActiTrack — Sistem Manajemen Aktivasi Toko", size: 20, color: "444444" })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
+    new Paragraph({ children: [new TextRun({ text: `No. Laporan: SRV-${String(route.id).padStart(4, "0")} / ${startTime.getFullYear()}`, size: 20, color: "444444" })], alignment: AlignmentType.CENTER, spacing: { after: 160 } })
+  );
+
+  children.push(sectionTitle("I. Informasi Umum"));
+  const infoRows: TableRow[] = [
+    ["Tanggal Survey", dateStr],
+    ["Tipe Survey", typeStr],
+    ["Nama Toko / Tujuan", route.storeName],
+    ["PIC / Tim Pelaksana", route.picName],
+    ["Status", route.status === "completed" ? "Selesai" : route.status],
+  ].map(([k, v]) => new TableRow({
+    children: [
+      cell([textP(k, { bold: true })], { fill: "F5F5F5", border: cellBorder, width: 30 }),
+      cell([textP(String(v))], { border: cellBorder, width: 70 }),
+    ],
+  }));
+  children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: infoRows }));
+
+  children.push(sectionTitle("II. Ringkasan Perjalanan"));
+  children.push(new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [new TableRow({
+      children: [
+        cell([textP(endTime ? durStr : "-", { bold: true, size: 40, align: AlignmentType.CENTER }), textP("Durasi Perjalanan", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
+        cell([textP(`${(distance / 1000).toFixed(2)} km`, { bold: true, size: 40, align: AlignmentType.CENTER }), textP("Total Jarak Tempuh", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
+        cell([textP(String(waypoints.length), { bold: true, size: 40, align: AlignmentType.CENTER }), textP("Jumlah Titik Waypoint", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 34 }),
+      ],
+    })],
+  }));
+
+  children.push(sectionTitle("III. Rute Perjalanan"));
+  if (mapB64) {
+    children.push(new Paragraph({
+      children: [new ImageRun({ type: "png", data: Buffer.from(mapB64, "base64"), transformation: { width: 470, height: 269 } })],
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 80, after: 40 },
+    }));
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "Buka rute ini di Google Maps → ", size: 18, color: "1a73e8" }), new TextRun({ text: gmapsUrl, size: 16, color: "666666" })],
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 100 },
+    }));
+  } else {
+    children.push(textP("Data rute perjalanan tidak tersedia (minimal 2 titik waypoint diperlukan).", { size: 20, color: "666666" }));
   }
 
-  return `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:w="urn:schemas-microsoft-com:office:word"
-      xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-<style>
-  body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.6; margin: 0; padding: 20mm 15mm; color: #222; }
-  .header { text-align: center; margin-bottom: 30pt; page-break-after: avoid; }
-  .header h1 { font-size: 24pt; font-weight: bold; margin: 0 0 6pt 0; letter-spacing: 0.5pt; }
-  .header p { font-size: 11pt; color: #444; margin: 0; }
-  .header hr { border: none; border-top: 2.5pt solid #222; margin: 12pt auto 0 auto; width: 70%; }
-  .section-title { font-size: 14pt; font-weight: bold; border-bottom: 1.5pt solid #333; padding-bottom: 5pt; margin-top: 24pt; margin-bottom: 12pt; page-break-after: avoid; }
-  table { width: 100%; border-collapse: collapse; margin: 12pt 0; font-size: 11pt; page-break-inside: avoid; }
-  table.info td { border: 1pt solid #222; padding: 6pt 10pt; vertical-align: top; }
-  table.info td:first-child { width: 30%; font-weight: bold; background: #f5f5f5; }
-  table.stats td { border: 1pt solid #222; padding: 12pt 8pt; width: 33%; text-align: center; }
-  table.stats .num { font-size: 20pt; font-weight: bold; }
-  table.stats .lbl { font-size: 10pt; color: #444; margin-top: 3pt; }
-  table.waypoint th { background: #333; color: white; padding: 6pt 10pt; text-align: left; font-weight: bold; font-size: 10pt; border: 1pt solid #333; }
-  table.waypoint td { border: 1pt solid #999; padding: 5pt 10pt; font-size: 10pt; }
-  .map-container { text-align: center; margin: 14pt 0; page-break-inside: avoid; }
-  .map-container img { width: 471pt; height: 269pt; border: 1pt solid #999; mso-width-percent: 24%; mso-height-percent: 24%; }
-  .map-link { text-align: center; font-size: 10pt; margin-top: 6pt; }
-  .map-link a { color: #1a73e8; }
-  .photo-wrapper { page-break-inside: avoid; }
-  .photo-table { border: none; width: 100%; border-collapse: collapse; }
-  .photo-table td { border: none; padding: 0 15px 15px 0; text-align: left; vertical-align: top; width: 50%; }
-  .photo-table td img { width: 236pt; height: 200pt; border: 1pt solid #999; }
-  .photo-table td p { margin: 3pt 0 0 0; font-size: 10pt; font-family: 'Times New Roman', Times, serif; }
-  .photo-table td .loc { font-size: 9pt; color: #666; margin: 2pt 0 0 0; }
-  .footer { text-align: center; margin-top: 36pt; padding-top: 12pt; border-top: 1pt solid #333; font-size: 10pt; color: #666; }
-  .footer .page-num { font-size: 9pt; color: #888; }
-  @page { size: A4; margin: 20mm 15mm; }
-</style>
-</head>
-<body>
+  children.push(sectionTitle("IV. Data Waypoint"));
+  if (waypoints.length > 0) {
+    const header = new TableRow({
+      children: [
+        cell([textP("No", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 10 }),
+        cell([textP("Latitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
+        cell([textP("Longitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
+        cell([textP("Akurasi (m)", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
+      ],
+    });
+    const rows = waypoints.slice(0, 100).map((w: any, i: number) => new TableRow({
+      children: [
+        cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 10 }),
+        cell([textP(w.lat.toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
+        cell([textP(w.lng.toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
+        cell([textP(w.accuracy ? w.accuracy.toFixed(1) : "-", { size: 18 })], { border: lightCellBorder, width: 30 }),
+      ],
+    }));
+    if (waypoints.length > 100) {
+      rows.push(new TableRow({
+        children: [cell([textP(`... dan ${waypoints.length - 100} titik waypoint lainnya.`, { size: 18, color: "666666" })], { border: lightCellBorder })],
+      }));
+    }
+    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
+  } else {
+    children.push(textP("Tidak ada data waypoint.", { size: 20, color: "666666" }));
+  }
 
-<div class="header">
-  <h1>LAPORAN SURVEY LAPANGAN</h1>
-  <p>ActiTrack &mdash; Sistem Manajemen Aktivasi Toko</p>
-  <p>No. Laporan: SRV-${String(route.id).padStart(4, "0")} / ${startTime.getFullYear()}</p>
-  <hr/>
-</div>
+  if (photos.length > 0) {
+    children.push(sectionTitle("V. Dokumentasi Lapangan"));
+    const photoRows: TableRow[] = [];
+    for (let i = 0; i < photos.length; i += 2) {
+      const pair = photos.slice(i, i + 2);
+      const cells: TableCell[] = [];
+      for (const p of pair) {
+        const buf = await photoBuffer(p.photoData);
+        const inner: Paragraph[] = buf
+          ? [
+              new Paragraph({ children: [new ImageRun({ type: "jpg", data: buf, transformation: { width: 280, height: 210 } })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
+              new Paragraph({ children: [new TextRun({ text: p.caption || "Foto dokumentasi", size: 18 })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
+              new Paragraph({ children: [new TextRun({ text: `Lokasi: ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`, size: 16, color: "666666" })], alignment: AlignmentType.CENTER, spacing: { after: 80 } }),
+            ]
+          : [textP("(Foto gagal dimuat)", { size: 18, color: "666666", align: AlignmentType.CENTER })];
+        cells.push(cell(inner, { width: 50 }));
+      }
+      photoRows.push(new TableRow({ children: cells }));
+    }
+    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: photoRows }));
+  }
 
-<div class="section-title">I. Informasi Umum</div>
-<table class="info">
-  <tr><td>Tanggal Survey</td><td>${dateStr}</td></tr>
-  <tr><td>Tipe Survey</td><td>${route.type === "observasi" ? "Observasi / Pengenalan Toko" : route.type === "mailer" ? "Sebar Mailer / Brosur" : route.type}</td></tr>
-  <tr><td>Nama Toko / Tujuan</td><td>${route.storeName}</td></tr>
-  <tr><td>PIC / Tim Pelaksana</td><td>${route.picName}</td></tr>
-  <tr><td>Status</td><td>${route.status === "completed" ? "Selesai" : route.status}</td></tr>
-</table>
+  children.push(new Paragraph({
+    children: [new TextRun({ text: "Laporan ini digenerate secara otomatis oleh ActiTrack", size: 18, color: "666666" })],
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 320, after: 20 },
+    border: { top: { style: BorderStyle.SINGLE, size: 4, color: "333333", space: 8 } },
+  }));
+  children.push(new Paragraph({ children: [new TextRun({ text: `ActiTrack — Aktivasi Toko Management © ${new Date().getFullYear()}`, size: 16, color: "888888" })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }));
+  children.push(new Paragraph({ children: [new TextRun({ text: "Halaman 1 dari 1", size: 14, color: "888888" })], alignment: AlignmentType.CENTER }));
 
-<div class="section-title">II. Ringkasan Perjalanan</div>
-<table class="stats">
-  <tr>
-    <td><div class="num">${endTime ? durationMin + " menit" : "-"}</div><div class="lbl">Durasi Perjalanan</div></td>
-    <td><div class="num">${(distance / 1000).toFixed(2)} km</div><div class="lbl">Total Jarak Tempuh</div></td>
-    <td><div class="num">${waypoints.length}</div><div class="lbl">Jumlah Titik Waypoint</div></td>
-  </tr>
-</table>
-
-${mapB64 ? `
-<div class="section-title">III. Rute Perjalanan</div>
-<div class="map-container">
-  <img src="data:image/png;base64,${mapB64}" alt="Peta Rute Perjalanan" width="629" height="359" />
-  <div class="map-link">
-    <a href="${gmapsUrl}">Buka rute ini di Google Maps &rarr;</a>
-  </div>
-</div>` : `
-<div class="section-title">III. Rute Perjalanan</div>
-<p style="color:#666;font-size:11pt">Data rute perjalanan tidak tersedia (minimal 2 titik waypoint diperlukan).</p>`}
-
-<div class="section-title">${mapB64 ? "IV" : "III"}. Data Waypoint</div>
-${waypoints.length > 0 ? `
-<table class="waypoint">
-  <thead>
-    <tr><th style="width:10%">No</th><th style="width:30%">Latitude</th><th style="width:30%">Longitude</th><th style="width:30%">Akurasi (m)</th></tr>
-  </thead>
-  <tbody>
-    ${waypoints.slice(0, 100).map((w: any, i: number) => `
-      <tr>
-        <td style="text-align:center">${i + 1}</td>
-        <td>${w.lat.toFixed(6)}</td>
-        <td>${w.lng.toFixed(6)}</td>
-        <td>${w.accuracy ? w.accuracy.toFixed(1) : "-"}</td>
-      </tr>`).join("")}
-    ${waypoints.length > 100 ? `<tr><td colspan="4" style="color:#666">... dan ${waypoints.length - 100} titik waypoint lainnya.</td></tr>` : ""}
-  </tbody>
-</table>` : '<p style="color:#666;font-size:11pt">Tidak ada data waypoint.</p>'}
-
-${photos.length > 0 ? `
-<div class="section-title">${mapB64 ? "V" : "IV"}. Dokumentasi Lapangan</div>
-<div class="photo-wrapper">
-<table class="photo-table">
-  ${photoRows}
-</table>
-</div>` : ""}
-
-<div class="footer">
-  <p>Laporan ini digenerate secara otomatis oleh ActiTrack</p>
-  <p>ActiTrack &mdash; Aktivasi Toko Management &copy; ${new Date().getFullYear()}</p>
-  <p class="page-num">Halaman <span style="mso-field-code: ' PAGE '">1</span> dari <span style="mso-field-code: ' NUMPAGES '">1</span></p>
-</div>
-
-</body>
-</html>`;
+  return Packer.toBuffer(new Document({
+    creator: "ActiTrack",
+    title: `Laporan Survey ${route.storeName}`,
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 1134, bottom: 1134, left: 1134, right: 1134 },
+        },
+      },
+      children,
+    }],
+  }));
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -312,40 +361,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     } catch (mapErr: any) {
       console.error("MAP BUILD ERROR:", mapErr?.message);
     }
-    const html = buildDoc(route, mapB64);
-    const safeName = route.storeName.replace(/[^a-zA-Z0-9]/g, "_");
+    const docx = await buildDocx(route, mapB64);
+    const safeName = (route.storeName || "survey").replace(/[^a-zA-Z0-9]/g, "_");
 
-    return new NextResponse(html, {
+    return new NextResponse(new Uint8Array(docx), {
       status: 200,
       headers: {
-        "Content-Type": "application/msword",
-        "Content-Disposition": `attachment; filename="Laporan_Survey_${safeName}.doc"`,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="Laporan_Survey_${safeName}.docx"`,
       },
     });
   } catch (e: any) {
     console.error("REPORT ERROR:", e?.message, e?.stack?.split("\n").slice(0, 5).join("\n"));
     return NextResponse.json({ error: e?.message || "Unknown error", stack: e?.stack?.split("\n").slice(0, 3).join("\n") }, { status: 500 });
   }
-}
-
-function simplifyPath(pts: any[]): { lat: number; lng: number }[] {
-  const out: { lat: number; lng: number }[] = [];
-  let last: { lat: number; lng: number } | null = null;
-  for (const p of pts) {
-    const lat = Number(p.lat), lng = Number(p.lng);
-    if (!last || haversine(last.lat, last.lng, lat, lng) >= 3) {
-      out.push({ lat, lng });
-      last = { lat, lng };
-    }
-  }
-  if (out.length === 0 && pts.length > 0) out.push({ lat: Number(pts[0].lat), lng: Number(pts[0].lng) });
-  return out;
-}
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

@@ -29,7 +29,7 @@ export default async function SurveyDetailPage({ params }: { params: Promise<{ i
         <a href={`/api/survey/${id}/report`}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
           style={{ background: "var(--ga-blue)", color: "white" }}>
-          <Download size={16} /> Download Laporan (.doc)
+          <Download size={16} /> Download Laporan (.docx)
         </a>
       </div>
 
