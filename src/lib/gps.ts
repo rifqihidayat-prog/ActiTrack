@@ -46,19 +46,25 @@ export function cleanTrack(points: GpsPoint[]): LatLng[] {
       lngs.push(median(w.map(p => p.lng)));
     }
   }
+  const times = acc.map(p => toTs(p.timestamp));
+  let hasTs = false;
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] > times[i - 1]) { hasTs = true; break; }
+  }
   const out: LatLng[] = [{ lat: lats[0], lng: lngs[0] }];
-  let lastT = toTs(acc[0].timestamp);
+  let lastT = times[0];
   for (let i = 1; i < n; i++) {
     const prev = out[out.length - 1];
     const lat = lats[i], lng = lngs[i];
     const d = haversine(prev.lat, prev.lng, lat, lng);
     if (d > JUMP_MAX) continue;
-    const t = toTs(acc[i].timestamp);
-    const dt = Math.max(1, (t - lastT) / 1000);
-    if (d / dt > SPEED_MAX) continue;
+    if (hasTs) {
+      const dt = Math.max(1, (times[i] - lastT) / 1000);
+      if (d / dt > SPEED_MAX) continue;
+    }
     if (d >= MIN_STEP) {
       out.push({ lat, lng });
-      lastT = t;
+      lastT = times[i];
     }
   }
   out.push({ lat: lats[n - 1], lng: lngs[n - 1] });

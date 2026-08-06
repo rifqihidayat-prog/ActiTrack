@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSurveyRouteById } from "@/lib/actions";
-import { cleanTrack, matchRouteToRoads } from "@/lib/gps";
+import { cleanTrack } from "@/lib/gps";
 import sharp from "sharp";
 import {
   AlignmentType, BorderStyle, Document, ImageRun, Packer, Paragraph, ShadingType,
@@ -27,15 +27,23 @@ function calcZoom(waypoints: any[], imgW: number, imgH: number): number {
   return Math.max(13, Math.min(19, z));
 }
 
+const TILE_MIRRORS = [
+  "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+  "https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+];
+
 async function fetchOSMTile(z: number, x: number, y: number): Promise<Buffer | null> {
-  try {
-    const url = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > 200) return buf;
-    }
-  } catch {}
+  for (const mirror of TILE_MIRRORS) {
+    try {
+      const url = mirror.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 200) return buf;
+      }
+    } catch {}
+  }
   return null;
 }
 
@@ -107,9 +115,8 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
     return { x: p.x - vpLeft, y: p.y - vpTop };
   }
 
-  // Rute disnap ke jaringan jalan OSM (Valhalla), fallback ke jejak GPS bersih
-  const matched = await matchRouteToRoads(waypoints, 6000);
-  const routeCoords = matched && matched.length >= 2 ? matched : cleanTrack(waypoints);
+  // Jejak GPS asli yang sudah dibersihkan (mengikuti langkah user)
+  const routeCoords = cleanTrack(waypoints);
   const pts = routeCoords.map((w: any) => {
     const p = svgCoord(w.lat, w.lng);
     return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
@@ -143,7 +150,7 @@ async function buildMapPNG(waypoints: any[], photos: any[]): Promise<string> {
     <text x="${ep.x.toFixed(1)}" y="${(ep.y - 16).toFixed(1)}" text-anchor="middle" font-size="10" fill="#34a853" font-weight="bold" font-family="Arial">Finish</text>
     ${waypointDots}
     ${photoMarkers}
-    <text x="${W / 2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#888" font-family="Arial">OpenStreetMap &#169; kontributor — Zoom ${zoom}</text>
+    <text x="${W / 2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#888" font-family="Arial">Peta &copy; OpenStreetMap &amp; CARTO kontributor — Zoom ${zoom}</text>
   </svg>`;
 
   const overlayBuf = await sharp(Buffer.from(overlaySvg)).png().toBuffer();
@@ -172,12 +179,13 @@ function sectionTitle(text: string): Paragraph {
   });
 }
 
-function cell(children: Paragraph[], opts: { fill?: string; border?: any; width?: number; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; vertical?: boolean } = {}): TableCell {
+function cell(children: Paragraph[], opts: { fill?: string; border?: any; width?: number; span?: number; vertical?: boolean } = {}): TableCell {
   return new TableCell({
     children,
     shading: opts.fill ? { type: ShadingType.CLEAR, fill: opts.fill } : undefined,
     borders: opts.border,
     width: opts.width !== undefined ? { size: opts.width, type: WidthType.PERCENTAGE } : undefined,
+    columnSpan: opts.span,
     verticalAlign: opts.vertical === false ? VerticalAlign.TOP : VerticalAlign.CENTER,
   });
 }
@@ -281,7 +289,7 @@ async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
         cell([textP("Akurasi (m)", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
       ],
     });
-    const rows = waypoints.slice(0, 100).map((w: any, i: number) => new TableRow({
+    const rows = waypoints.slice(0, 20).map((w: any, i: number) => new TableRow({
       children: [
         cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 10 }),
         cell([textP(w.lat.toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
@@ -289,11 +297,12 @@ async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
         cell([textP(w.accuracy ? w.accuracy.toFixed(1) : "-", { size: 18 })], { border: lightCellBorder, width: 30 }),
       ],
     }));
-    if (waypoints.length > 100) {
-      rows.push(new TableRow({
-        children: [cell([textP(`... dan ${waypoints.length - 100} titik waypoint lainnya.`, { size: 18, color: "666666" })], { border: lightCellBorder })],
-      }));
-    }
+    const withAcc = waypoints.filter((w: any) => w.accuracy != null);
+    const avgAcc = withAcc.length > 0 ? withAcc.reduce((a: number, w: any) => a + w.accuracy, 0) / withAcc.length : 0;
+    const more = waypoints.length > 20 ? ` ... dan ${waypoints.length - 20} titik waypoint lainnya.` : "";
+    rows.push(new TableRow({
+      children: [cell([textP(`Total ${waypoints.length} titik${more} — Rata-rata akurasi: ${avgAcc ? avgAcc.toFixed(1) + " m" : "-"}`, { size: 18, color: "666666" })], { span: 4, border: lightCellBorder })],
+    }));
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
   } else {
     children.push(textP("Tidak ada data waypoint.", { size: 20, color: "666666" }));

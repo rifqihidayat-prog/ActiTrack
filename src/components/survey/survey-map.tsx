@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { matchRouteToRoads, cleanTrack } from "@/lib/gps";
+import { cleanTrack } from "@/lib/gps";
 
 interface Props {
   waypoints: { lat: number; lng: number }[];
@@ -12,7 +12,6 @@ export default function SurveyMap({ waypoints, photos, className = "" }: Props) 
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const Lref = useRef<any>(null);
-  const pathPromiseRef = useRef<Promise<{ lat: number; lng: number }[]> | null>(null);
 
   useEffect(() => {
     if (mapInstance.current) return;
@@ -25,7 +24,7 @@ export default function SurveyMap({ waypoints, photos, className = "" }: Props) 
       const map = L.map(mapRef.current, { zoomControl: true }).setView([-6.2, 106.8], 13);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap" }).addTo(map);
       mapInstance.current = map;
-      drawRoute(map, L, waypoints, photos, pathPromiseRef);
+      drawRoute(map, L, waypoints, photos);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -34,31 +33,25 @@ export default function SurveyMap({ waypoints, photos, className = "" }: Props) 
     const map = mapInstance.current;
     const L = Lref.current;
     if (!map || !L) return;
-    drawRoute(map, L, waypoints, photos, pathPromiseRef);
+    drawRoute(map, L, waypoints, photos);
   }, [waypoints, photos]);
 
   return <div ref={mapRef} className={`w-full h-full min-h-[300px] rounded-xl ${className}`} />;
 }
 
-async function drawRoute(
+function drawRoute(
   map: any,
   L: any,
   waypoints: { lat: number; lng: number }[],
-  photos: { lat: number; lng: number; photoData: string; caption: string }[],
-  pathPromiseRef: { current: Promise<{ lat: number; lng: number }[]> | null }
+  photos: { lat: number; lng: number; photoData: string; caption: string }[]
 ) {
   map.eachLayer((layer: any) => {
     if (layer instanceof L.Polyline || layer instanceof L.Marker) map.removeLayer(layer);
   });
   if (waypoints.length < 2) return;
-  if (!pathPromiseRef.current) {
-    pathPromiseRef.current = (async () => {
-      const matched = await matchRouteToRoads(waypoints);
-      if (matched && matched.length >= 2) return matched;
-      return cleanTrack(waypoints);
-    })();
-  }
-  const path = await pathPromiseRef.current;
+
+  // Jejak GPS asli yang sudah dibersihkan (mengikuti langkah user)
+  const path = cleanTrack(waypoints);
   if (path.length >= 2) {
     const coords = path.map(w => [w.lat, w.lng]);
     L.polyline(coords, { color: "#1a73e8", weight: 4, opacity: 0.8 }).addTo(map);

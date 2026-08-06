@@ -22,31 +22,61 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
   const [livePoints, setLivePoints] = useState<LatLng[]>([]);
   const [lastPos, setLastPos] = useState<LatLng | null>(null);
   const waypointsRef = useRef<Waypoint[]>([]);
+  const savedCountRef = useRef(0);
+  const routeIdRef = useRef<number | null>(null);
   const lastPosRef = useRef<LatLng | null>(null);
   const lastTimeRef = useRef(0);
   const distanceRef = useRef(0);
   const startTimeRef = useRef(0);
   const lastSaveTimeRef = useRef(0);
   const timerRef = useRef<any>(null);
+  const saveTimerRef = useRef<any>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const persistPending = async () => {
+    const id = routeIdRef.current;
+    if (!id) return;
+    const pending = waypointsRef.current.slice(savedCountRef.current);
+    if (pending.length === 0) return;
+    try {
+      await saveWaypoints(id, pending);
+      savedCountRef.current = waypointsRef.current.length;
+    } catch (e) {
+      console.error("Gagal menyimpan waypoint:", e);
+    }
+  };
+  const persistPendingRef = useRef(persistPending);
+  persistPendingRef.current = persistPending;
+
+  useEffect(() => {
+    const flush = () => { persistPendingRef.current(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, []);
 
   const startTracking = async () => {
     if (!form.storeName) return;
     const id = await createSurveyRoute(form);
     setRouteId(id);
+    routeIdRef.current = id;
     setTracking(true);
     startTimeRef.current = Date.now();
     const wid = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy;
         const now = Date.now();
-        if (pos.coords.accuracy > 30) return;
+        if (acc > 40) return;
         if (!lastPosRef.current) {
-          const wp: Waypoint = { lat, lng, accuracy: pos.coords.accuracy, timestamp: new Date(now).toISOString() };
           lastPosRef.current = { lat, lng };
           lastTimeRef.current = now;
           lastSaveTimeRef.current = now;
+          const wp: Waypoint = { lat, lng, accuracy: acc, timestamp: new Date(now).toISOString() };
           waypointsRef.current.push(wp);
           setLivePoints(p => [...p, { lat, lng }]);
           setLastPos({ lat, lng });
@@ -59,32 +89,32 @@ export default function SurveyTracker({ userStoreName, userName }: { userStoreNa
         const dt = Math.max(1, (now - lastTimeRef.current) / 1000);
         lastTimeRef.current = now;
         if (d > 400 || d / dt > 12) return;
-        if (d >= 3) {
-          distanceRef.current += d;
-          setDistance(distanceRef.current);
-          lastPosRef.current = sm;
-          if (d >= 5 || now - lastSaveTimeRef.current >= 5000) {
-            const wp: Waypoint = { ...sm, accuracy: pos.coords.accuracy, timestamp: new Date(now).toISOString() };
-            waypointsRef.current.push(wp);
-            lastSaveTimeRef.current = now;
-            setLivePoints(p => [...p, sm]);
-          }
-        }
+        distanceRef.current += d;
+        setDistance(distanceRef.current);
+        lastPosRef.current = sm;
         setLastPos(sm);
+        if (d >= 3 || now - lastSaveTimeRef.current >= 3000) {
+          const wp: Waypoint = { ...sm, accuracy: acc, timestamp: new Date(now).toISOString() };
+          waypointsRef.current.push(wp);
+          lastSaveTimeRef.current = now;
+          setLivePoints(p => [...p, sm]);
+        }
       },
       (err) => console.error("GPS error:", err),
-      { enableHighAccuracy: true, maximumAge: 5000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
     setWatchId(wid);
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000)), 1000);
+    saveTimerRef.current = setInterval(() => persistPendingRef.current(), 10000);
   };
 
   const stopTracking = async () => {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     if (timerRef.current) clearInterval(timerRef.current);
+    if (saveTimerRef.current) clearInterval(saveTimerRef.current);
     if (!routeId) return;
     try {
-      await saveWaypoints(routeId, waypointsRef.current);
+      await persistPending();
     } catch (e) {
       console.error("Gagal menyimpan waypoint:", e);
     }

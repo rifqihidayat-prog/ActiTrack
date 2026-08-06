@@ -433,3 +433,27 @@ export async function getSurveyRouteById(id: number) {
   }
   return route;
 }
+
+// Perbaiki statistik data lama tanpa mengubah waypoint:
+// isi ulang total_distance (dari jalur waypoint) dan end_time (dari waypoint terakhir).
+export async function healSurveyRoutes(): Promise<{ healed: number; skipped: number }> {
+  await requireAdmin();
+  const routes = await db.query.surveyRoutes.findMany({ with: { waypoints: true } });
+  let healed = 0;
+  for (const r of routes) {
+    const wps = (r as any).waypoints || [];
+    const needDistance = !r.totalDistance || r.totalDistance <= 0;
+    const needEnd = !r.endTime;
+    if (!needDistance && !needEnd) continue;
+    const set: any = {};
+    if (needDistance) set.totalDistance = wps.length >= 2 ? trackDistance(wps) : 0;
+    if (needEnd && wps.length > 0 && wps[wps.length - 1].timestamp) {
+      set.endTime = wps[wps.length - 1].timestamp;
+    }
+    if (Object.keys(set).length > 0) {
+      await db.update(surveyRoutes).set(set).where(eq(surveyRoutes.id, r.id));
+      healed++;
+    }
+  }
+  return { healed, skipped: routes.length - healed };
+}
