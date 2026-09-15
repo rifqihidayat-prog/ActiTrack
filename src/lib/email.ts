@@ -129,6 +129,7 @@ export async function sendSurveyEmail({
     await transporter.sendMail({
       from,
       to: recipientEmail,
+      replyTo: from,
       subject: `[Laporan Survey] ${route.storeName} - ${distKm} km (${dateStr})`,
       html: htmlContent,
       attachments: [
