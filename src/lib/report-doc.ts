@@ -4,9 +4,10 @@ import {
   Table, TableCell, TableRow, TextRun, VerticalAlign, WidthType,
 } from "docx";
 import { cleanTrack, haversine } from "./gps";
+import { getAdministrativeAddress, checkStoreCoverage } from "./geo";
 
 const WP_LIMIT = 20;
-const PHOTO_LIMIT = 8;
+const PHOTO_LIMIT = 10;
 
 function worldPx(lat: number, lng: number, zoom: number) {
   const n = Math.pow(2, zoom);
@@ -29,14 +30,18 @@ function calcZoom(waypoints: any[], imgW: number, imgH: number): number {
 }
 
 const TILE_MIRRORS = [
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
   "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-  "https://tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+  "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+  "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+  "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
 ];
 
 async function fetchTile(url: string): Promise<Buffer | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(url, {
+      headers: { "User-Agent": "ActiTrack-Retail/1.0" },
+      signal: AbortSignal.timeout(4000),
+    });
     if (res.ok) {
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length > 200) return buf;
@@ -263,11 +268,21 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
   );
 
   children.push(sectionTitle("I. Informasi Umum"));
+  let adminAddr: any = null;
+  let coverageInfo: any = null;
+  if (waypoints.length > 0) {
+    adminAddr = await getAdministrativeAddress(waypoints[0].lat, waypoints[0].lng);
+    coverageInfo = checkStoreCoverage(route.storeName, waypoints[0].lat, waypoints[0].lng);
+  }
+
   const infoRows: TableRow[] = [
     ["Tanggal Survey", dateStr],
     ["Tipe Survey", typeStr],
     ["Nama Toko / Tujuan", route.storeName],
     ["PIC / Tim Pelaksana", route.picName],
+    ["Kelurahan / Desa Mulai", adminAddr?.kelurahan || "-"],
+    ["Kecamatan & Kota", adminAddr ? `${adminAddr.kecamatan}, ${adminAddr.city}` : "-"],
+    ["Area Cakupan Toko", coverageInfo?.message || "-"],
     ["Status", route.status === "completed" ? "Selesai" : route.status],
   ].map(([k, v]) => new TableRow({
     children: [

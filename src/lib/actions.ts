@@ -1,10 +1,13 @@
-﻿"use server";
+"use server";
 import { db } from "@/db";
 import { submissions, submissionBudgets, eventResults, eventCostItems, eventPromoItems, users, surveyRoutes, surveyWaypoints, surveyPhotos } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { trackDistance } from "@/lib/gps";
+import { getAdministrativeAddress, checkStoreCoverage } from "@/lib/geo";
+import { sendSurveyEmail } from "@/lib/email";
+import { buildMapPNG, buildDocx } from "@/lib/report-doc";
 
 export type SubmissionData = { storeName: string; picName: string; proposedDate: string; activationType: string; descriptionTarget: string; objectiveType: string; lastMonthSales: number; lastMonthTransactions: number; targetValue: number; targetTransactions: number; };
 export type BudgetItemData = { budgetCategory: string; itemDescription: string; estimatedCost: number; };
@@ -456,4 +459,59 @@ export async function healSurveyRoutes(): Promise<{ healed: number; skipped: num
     }
   }
   return { healed, skipped: routes.length - healed };
+}
+
+export async function getSurveyLocationSummary(lat: number, lng: number, storeName: string) {
+  const [address, coverage] = await Promise.all([
+    getAdministrativeAddress(lat, lng),
+    Promise.resolve(checkStoreCoverage(storeName, lat, lng)),
+  ]);
+  return { address, coverage };
+}
+
+export async function sendSurveyReportEmail(routeId: number, recipientEmail: string) {
+  const route = await getSurveyRouteById(routeId);
+  if (!route) {
+    return { success: false, message: "Data survey tidak ditemukan." };
+  }
+
+  const waypoints = route.waypoints || [];
+  const photos = route.photos || [];
+
+  let mapB64 = "";
+  try {
+    mapB64 = await buildMapPNG(waypoints, photos);
+  } catch (err: any) {
+    console.warn("Gagal render peta PNG:", err?.message);
+  }
+
+  const docxBuffer = await buildDocx(route, mapB64);
+
+  const startPt = waypoints[0];
+  let adminAddr: any = null;
+  let coverage: any = null;
+  if (startPt) {
+    adminAddr = await getAdministrativeAddress(startPt.lat, startPt.lng);
+    coverage = checkStoreCoverage(route.storeName, startPt.lat, startPt.lng);
+  }
+
+  const startTime = new Date(route.createdAt);
+  const endTime = route.endTime ? new Date(route.endTime) : null;
+  const durMs = startTime && endTime ? endTime.getTime() - startTime.getTime() : 0;
+  const durMin = Math.floor(durMs / 60000);
+  const durationStr = durMin >= 60 ? `${Math.floor(durMin / 60)} jam ${durMin % 60} menit` : `${durMin} menit`;
+
+  return await sendSurveyEmail({
+    recipientEmail,
+    route,
+    summaryInfo: {
+      kelurahan: adminAddr?.kelurahan || "-",
+      kecamatan: adminAddr?.kecamatan || "-",
+      city: adminAddr?.city || "-",
+      coverageMessage: coverage?.message || "Masuk Area Coverage",
+      durationStr,
+      photoCount: photos.length,
+    },
+    docxBuffer,
+  });
 }
