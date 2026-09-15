@@ -134,6 +134,33 @@ export default async function SurveyDetailPage({ params }: { params: Promise<{ i
                 {coverage?.message || "Dalam Radius Toko"}
               </span>
             </div>
+            {coverage?.sectors && (
+              <div className="col-span-1 sm:col-span-2 pt-2 border-t border-blue-200/60 mt-1">
+                <div className="text-[11px] text-slate-500 mb-1.5 font-medium flex items-center justify-between">
+                  <span>Radius Coverage 4 Arah Mata Angin:</span>
+                  {coverage.direction && coverage.direction !== "-" && (
+                    <span className="font-bold text-blue-700">Posisi: Sektor {coverage.direction} ({coverage.distanceKm} km)</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
+                  {coverage.sectors.map((sec: any) => (
+                    <div
+                      key={sec.name}
+                      className={`p-1.5 rounded-lg border ${
+                        sec.active
+                          ? coverage.isWithinCoverage
+                            ? "bg-emerald-100/90 border-emerald-300 text-emerald-800 font-bold"
+                            : "bg-rose-100/90 border-rose-300 text-rose-800 font-bold"
+                          : "bg-white/80 border-slate-200 text-slate-600"
+                      }`}
+                    >
+                      <div>{sec.name}</div>
+                      <div className="text-[9px] opacity-75">{sec.limitKm} km</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

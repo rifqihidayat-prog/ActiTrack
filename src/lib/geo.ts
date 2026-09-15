@@ -70,7 +70,38 @@ export function getStoreCoordinate(storeName: string): StoreCoordinate | null {
 }
 
 /**
- * Cek apakah koordinat survei berada dalam radius coverage toko
+ * Menghitung sudut bearing (derajat 0-360) dari titik 1 ke titik 2
+ */
+export function calculateBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const deltaLambda = toRad(lng2 - lng1);
+
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  const theta = Math.atan2(y, x);
+  return (toDeg(theta) + 360) % 360;
+}
+
+/**
+ * Mengelompokkan sudut bearing ke 4 mata angin utama:
+ * - Utara   : 315° s.d. 45°
+ * - Timur   : 45° s.d. 135°
+ * - Selatan : 135° s.d. 225°
+ * - Barat   : 225° s.d. 315°
+ */
+export function getCardinalDirection(bearing: number): "Utara" | "Timur" | "Selatan" | "Barat" {
+  if (bearing >= 45 && bearing < 135) return "Timur";
+  if (bearing >= 135 && bearing < 225) return "Selatan";
+  if (bearing >= 225 && bearing < 315) return "Barat";
+  return "Utara";
+}
+
+/**
+ * Cek apakah koordinat survei berada dalam radius coverage toko (5 km per 4 mata angin: Utara, Timur, Selatan, Barat)
  */
 export function checkStoreCoverage(storeName: string, lat: number, lng: number, defaultRadiusKm = 5.0) {
   const store = getStoreCoordinate(storeName);
@@ -78,8 +109,16 @@ export function checkStoreCoverage(storeName: string, lat: number, lng: number, 
     return {
       hasStoreCoord: false,
       distanceKm: 0,
+      direction: "-",
+      bearing: 0,
       isWithinCoverage: true,
-      message: "Koordinat toko belum terdaftar",
+      message: `Koordinat acuan untuk "${storeName}" belum terdaftar (Radius acuan standar 5 km di 4 arah mata angin)`,
+      sectors: [
+        { name: "Utara", limitKm: defaultRadiusKm, active: false },
+        { name: "Timur", limitKm: defaultRadiusKm, active: false },
+        { name: "Selatan", limitKm: defaultRadiusKm, active: false },
+        { name: "Barat", limitKm: defaultRadiusKm, active: false },
+      ],
     };
   }
 
@@ -87,17 +126,30 @@ export function checkStoreCoverage(storeName: string, lat: number, lng: number, 
   const distanceKm = Math.round((distMeters / 1000) * 100) / 100;
   const radius = store.coverageRadiusKm || defaultRadiusKm;
   const isWithinCoverage = distanceKm <= radius;
+  const bearing = calculateBearing(store.lat, store.lng, lat, lng);
+  const direction = getCardinalDirection(bearing);
+
+  const message = isWithinCoverage
+    ? `Masuk Coverage Area: Sektor ${direction} (${distanceKm} km dari toko, batas ${radius} km)`
+    : `Di Luar Coverage: Sektor ${direction} (${distanceKm} km > batas ${radius} km dari toko)`;
 
   return {
     hasStoreCoord: true,
+    storeName: store.name,
     storeLat: store.lat,
     storeLng: store.lng,
     distanceKm,
     radiusKm: radius,
+    bearing: Math.round(bearing),
+    direction,
     isWithinCoverage,
-    message: isWithinCoverage
-      ? `Masuk Coverage Area (${distanceKm} km dari toko)`
-      : `Di Luar Coverage (${distanceKm} km > ${radius} km radius)`,
+    message,
+    sectors: [
+      { name: "Utara", limitKm: radius, active: direction === "Utara" },
+      { name: "Timur", limitKm: radius, active: direction === "Timur" },
+      { name: "Selatan", limitKm: radius, active: direction === "Selatan" },
+      { name: "Barat", limitKm: radius, active: direction === "Barat" },
+    ],
   };
 }
 

@@ -347,13 +347,16 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
         cell([textP("Longitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
       ],
     });
-    const rows = photos.slice(0, PHOTO_LIMIT).map((p: any, i: number) => new TableRow({
+    const rows = photos.map((p: any, i: number) => new TableRow({
       children: [
         cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 10 }),
         cell([textP(p.caption || `Foto #${i + 1}`, { size: 18 })], { border: lightCellBorder, width: 30 }),
         cell([textP(Number(p.lat).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
         cell([textP(Number(p.lng).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
       ],
+    }));
+    rows.push(new TableRow({
+      children: [cell([textP(`Total ${photos.length} titik koordinat foto tercatat selama survey lapangan.`, { size: 18, color: "666666" })], { span: 4, border: lightCellBorder })],
     }));
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
   } else {
@@ -382,7 +385,7 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
     }
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: photoRows }));
     if (photos.length > PHOTO_LIMIT) {
-      children.push(textP(`... dan ${photos.length - PHOTO_LIMIT} foto lainnya.`, { size: 18, color: "666666", align: AlignmentType.CENTER }));
+      children.push(textP(`* Catatan: Menampilkan ${PHOTO_LIMIT} foto utama dalam laporan Word. Total ${photos.length} titik foto lengkap tersimpan dalam sistem aplikasi ActiTrack.`, { size: 18, color: "666666", align: AlignmentType.CENTER }));
     }
   }
 
