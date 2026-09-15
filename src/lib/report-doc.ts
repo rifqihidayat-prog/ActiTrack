@@ -337,8 +337,10 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
     children.push(textP("Data rute perjalanan tidak tersedia (minimal 2 titik waypoint diperlukan).", { size: 20, color: "666666" }));
   }
 
+  const reportPhotos = photos.slice(0, PHOTO_LIMIT);
+
   children.push(sectionTitle("IV. Titik Koordinat Pengambilan Foto"));
-  if (photos.length > 0) {
+  if (reportPhotos.length > 0) {
     const header = new TableRow({
       children: [
         cell([textP("No", { bold: true, size: 18, color: "FFFFFF", align: AlignmentType.CENTER })], { fill: "333333", border: cellBorder, width: 10 }),
@@ -347,7 +349,7 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
         cell([textP("Longitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
       ],
     });
-    const rows = photos.map((p: any, i: number) => new TableRow({
+    const rows = reportPhotos.map((p: any, i: number) => new TableRow({
       children: [
         cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 10 }),
         cell([textP(p.caption || `Foto #${i + 1}`, { size: 18 })], { border: lightCellBorder, width: 30 }),
@@ -355,15 +357,17 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
         cell([textP(Number(p.lng).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
       ],
     }));
+    const coordSummary = photos.length > PHOTO_LIMIT
+      ? `Menampilkan ${PHOTO_LIMIT} titik koordinat foto utama (sesuai 10 foto terlampir). Total ${photos.length} titik foto tersimpan lengkap di sistem.`
+      : `Total ${photos.length} titik koordinat foto tercatat selama survey lapangan.`;
     rows.push(new TableRow({
-      children: [cell([textP(`Total ${photos.length} titik koordinat foto tercatat selama survey lapangan.`, { size: 18, color: "666666" })], { span: 4, border: lightCellBorder })],
+      children: [cell([textP(coordSummary, { size: 18, color: "666666" })], { span: 4, border: lightCellBorder })],
     }));
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
   } else {
     children.push(textP("Tidak ada titik koordinat foto yang direkam selama survey.", { size: 20, color: "666666" }));
   }
 
-  const reportPhotos = photos.slice(0, PHOTO_LIMIT);
   if (reportPhotos.length > 0) {
     children.push(sectionTitle("V. Dokumentasi Lapangan"));
     const photoRows: TableRow[] = [];
@@ -385,7 +389,7 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
     }
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: photoRows }));
     if (photos.length > PHOTO_LIMIT) {
-      children.push(textP(`* Catatan: Menampilkan ${PHOTO_LIMIT} foto utama dalam laporan Word. Total ${photos.length} titik foto lengkap tersimpan dalam sistem aplikasi ActiTrack.`, { size: 18, color: "666666", align: AlignmentType.CENTER }));
+      children.push(textP(`* Catatan: Menampilkan ${PHOTO_LIMIT} foto utama dalam laporan Word (sinkron dengan koordinat Poin IV). Total ${photos.length} titik foto lengkap tersimpan dalam sistem aplikasi ActiTrack.`, { size: 18, color: "666666", align: AlignmentType.CENTER }));
     }
   }
 

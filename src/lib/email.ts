@@ -33,7 +33,7 @@ export async function sendSurveyEmail({
   const port = Number(process.env.SMTP_PORT) || 587;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || (user ? `"ActiTrack System" <${user}>` : "no-reply@actitrack.local");
+  const from = process.env.SMTP_FROM || (user ? `"ActiTrack No-Reply" <${user}>` : "ActiTrack No-Reply <no-reply@actitrack.local>");
 
   if (!user || !pass) {
     return {
