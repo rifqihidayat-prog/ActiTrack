@@ -8,6 +8,7 @@ import { trackDistance } from "@/lib/gps";
 import { getAdministrativeAddress, checkStoreCoverage } from "@/lib/geo";
 import { sendSurveyEmail } from "@/lib/email";
 import { buildMapPNG, buildDocx } from "@/lib/report-doc";
+import { parseUtcDate, formatDurationMs } from "@/lib/utils";
 
 export type SubmissionData = { storeName: string; picName: string; proposedDate: string; activationType: string; descriptionTarget: string; objectiveType: string; lastMonthSales: number; lastMonthTransactions: number; targetValue: number; targetTransactions: number; };
 export type BudgetItemData = { budgetCategory: string; itemDescription: string; estimatedCost: number; };
@@ -389,10 +390,16 @@ export async function deleteSubmission(id: number) {
 }
 
 // === SURVEY ACTIONS ===
-export async function createSurveyRoute(data: { type: string; storeName: string; picName: string }) {
+export async function createSurveyRoute(data: { type: string; storeName: string; picName: string; startTime?: string }) {
   const session = await getSession();
   if (!session) throw new Error("Unauthorized");
-  const payload = session.role === "user" ? { ...data, storeName: session.storeName } : data;
+  const now = new Date().toISOString();
+  const payload = {
+    ...data,
+    storeName: session.role === "user" ? session.storeName : data.storeName,
+    startTime: data.startTime || now,
+    createdAt: now,
+  };
   const [r] = await db.insert(surveyRoutes).values(payload).returning({ id: surveyRoutes.id });
   return r.id;
 }
@@ -410,7 +417,16 @@ export async function saveWaypoints(routeId: number, points: { lat: number; lng:
 }
 export async function saveSurveyPhoto(routeId: number, data: { lat: number; lng: number; photoData: string; caption?: string }) {
   await requireOwnRoute(routeId);
-  await db.insert(surveyPhotos).values({ routeId, ...data, caption: data.caption ?? "" });
+  const now = new Date().toISOString();
+  const [p] = await db.insert(surveyPhotos).values({
+    routeId,
+    lat: data.lat,
+    lng: data.lng,
+    photoData: data.photoData,
+    caption: data.caption ?? "",
+    timestamp: now,
+  }).returning({ id: surveyPhotos.id });
+  return { success: true, id: p.id };
 }
 export async function getSurveyRoutes() {
   const store = await getUserStore();
@@ -495,11 +511,10 @@ export async function sendSurveyReportEmail(routeId: number, recipientEmail: str
     coverage = checkStoreCoverage(route.storeName, startPt.lat, startPt.lng);
   }
 
-  const startTime = new Date(route.createdAt);
-  const endTime = route.endTime ? new Date(route.endTime) : null;
-  const durMs = startTime && endTime ? endTime.getTime() - startTime.getTime() : 0;
-  const durMin = Math.floor(durMs / 60000);
-  const durationStr = durMin >= 60 ? `${Math.floor(durMin / 60)} jam ${durMin % 60} menit` : `${durMin} menit`;
+  const startTime = parseUtcDate(route.startTime || route.createdAt);
+  const endTime = parseUtcDate(route.endTime);
+  const durMs = startTime && endTime ? Math.max(0, endTime.getTime() - startTime.getTime()) : 0;
+  const durationStr = formatDurationMs(durMs);
 
   return await sendSurveyEmail({
     recipientEmail,

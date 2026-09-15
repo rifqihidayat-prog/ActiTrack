@@ -76,7 +76,7 @@ async function main() {
   console.log("contains word/media image:", hasBytes(docx, "word/media/image"));
   console.log("contains Rute Perjalanan:", hasBytes(docx, "Rute Perjalanan"));
   console.log("contains Dokumentasi Lapangan:", hasBytes(docx, "Dokumentasi Lapangan"));
-  console.log("contains Data Waypoint:", hasBytes(docx, "Data Waypoint"));
+  console.log("contains Titik Koordinat Pengambilan Foto:", hasBytes(docx, "Titik Koordinat Pengambilan Foto"));
   console.log("photo embedded count (image1..image9):", ["image1.", "image2.", "image3.", "image4.", "image5.", "image6.", "image7.", "image8.", "image9."].filter((s) => hasBytes(docx, s)).length);
 
   const fail = [];

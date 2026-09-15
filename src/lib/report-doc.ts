@@ -5,6 +5,7 @@ import {
 } from "docx";
 import { cleanTrack, haversine } from "./gps";
 import { getAdministrativeAddress, checkStoreCoverage } from "./geo";
+import { parseUtcDate, formatDurationMs } from "./utils";
 
 const WP_LIMIT = 20;
 const PHOTO_LIMIT = 10;
@@ -224,11 +225,22 @@ function textP(text: string, opts: { bold?: boolean; size?: number; color?: stri
 
 async function photoBuffer(dataUri: string): Promise<Buffer | null> {
   try {
-    const m = /^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/.exec(dataUri);
-    if (!m) return null;
-    const buf = Buffer.from(m[1], "base64");
-    return await sharp(buf).rotate().resize({ width: 700, withoutEnlargement: true }).jpeg({ quality: 75 }).toBuffer();
-  } catch {
+    if (!dataUri) return null;
+    let base64 = dataUri;
+    const commaIdx = dataUri.indexOf(",");
+    if (commaIdx !== -1) {
+      base64 = dataUri.slice(commaIdx + 1);
+    }
+    base64 = base64.trim().replace(/\s/g, "");
+    const buf = Buffer.from(base64, "base64");
+    if (buf.length === 0) return null;
+    return await sharp(buf)
+      .rotate()
+      .resize({ width: 700, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  } catch (err) {
+    console.error("photoBuffer error:", err);
     return null;
   }
 }
@@ -237,15 +249,18 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
   const waypoints = validPoints(route.waypoints || []);
   const photos = route.photos || [];
   const distance = route.totalDistance ?? 0;
-  const startRaw = new Date(route.createdAt);
-  const startTime = Number.isNaN(startRaw.getTime()) ? null : startRaw;
-  const endRaw = route.endTime ? new Date(route.endTime) : null;
-  const endTime = endRaw && !Number.isNaN(endRaw.getTime()) ? endRaw : null;
+  const startTime = parseUtcDate(route.startTime || route.createdAt);
+  const endTime = parseUtcDate(route.endTime);
   const durationMs = startTime && endTime ? endTime.getTime() - startTime.getTime() : 0;
-  const durationMin = Math.floor(durationMs / 60000);
-  const durStr = durationMin >= 60 ? `${Math.floor(durationMin / 60)} jam ${durationMin % 60} menit` : `${durationMin} menit`;
+  const durStr = formatDurationMs(durationMs);
   const dateStr = startTime
-    ? startTime.toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+    ? startTime.toLocaleDateString("id-ID", {
+        timeZone: "Asia/Jakarta",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
     : "-";
   const typeStr = route.type === "observasi" ? "Observasi / Pengenalan Toko" : route.type === "mailer" ? "Sebar Mailer / Brosur" : route.type;
 
@@ -297,9 +312,9 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
     width: { size: 100, type: WidthType.PERCENTAGE },
     rows: [new TableRow({
       children: [
-        cell([textP(endTime && startTime ? durStr : "-", { bold: true, size: 40, align: AlignmentType.CENTER }), textP("Durasi Perjalanan", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
-        cell([textP(`${(distance / 1000).toFixed(2)} km`, { bold: true, size: 40, align: AlignmentType.CENTER }), textP("Total Jarak Tempuh", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
-        cell([textP(String(waypoints.length), { bold: true, size: 40, align: AlignmentType.CENTER }), textP("Jumlah Titik Waypoint", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 34 }),
+        cell([textP(endTime && startTime ? durStr : "-", { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Durasi Perjalanan", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
+        cell([textP(`${(distance / 1000).toFixed(2)} km`, { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Total Jarak Tempuh", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
+        cell([textP(`${photos.length} Titik`, { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Total Titik Foto", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 34 }),
       ],
     })],
   }));
@@ -322,33 +337,27 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
     children.push(textP("Data rute perjalanan tidak tersedia (minimal 2 titik waypoint diperlukan).", { size: 20, color: "666666" }));
   }
 
-  children.push(sectionTitle("IV. Data Waypoint"));
-  if (waypoints.length > 0) {
+  children.push(sectionTitle("IV. Titik Koordinat Pengambilan Foto"));
+  if (photos.length > 0) {
     const header = new TableRow({
       children: [
-        cell([textP("No", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 10 }),
+        cell([textP("No", { bold: true, size: 18, color: "FFFFFF", align: AlignmentType.CENTER })], { fill: "333333", border: cellBorder, width: 10 }),
+        cell([textP("Keterangan Foto", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
         cell([textP("Latitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
         cell([textP("Longitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
-        cell([textP("Akurasi (m)", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
       ],
     });
-    const rows = waypoints.slice(0, WP_LIMIT).map((w: any, i: number) => new TableRow({
+    const rows = photos.slice(0, PHOTO_LIMIT).map((p: any, i: number) => new TableRow({
       children: [
         cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 10 }),
-        cell([textP(w.lat.toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
-        cell([textP(w.lng.toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
-        cell([textP(w.accuracy != null ? w.accuracy.toFixed(1) : "-", { size: 18 })], { border: lightCellBorder, width: 30 }),
+        cell([textP(p.caption || `Foto #${i + 1}`, { size: 18 })], { border: lightCellBorder, width: 30 }),
+        cell([textP(Number(p.lat).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
+        cell([textP(Number(p.lng).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
       ],
-    }));
-    const withAcc = waypoints.filter((w: any) => w.accuracy != null);
-    const avgAcc = withAcc.length > 0 ? withAcc.reduce((a: number, w: any) => a + w.accuracy, 0) / withAcc.length : 0;
-    const more = waypoints.length > WP_LIMIT ? ` ... dan ${waypoints.length - WP_LIMIT} titik waypoint lainnya.` : "";
-    rows.push(new TableRow({
-      children: [cell([textP(`Total ${waypoints.length} titik${more} — Rata-rata akurasi: ${avgAcc ? avgAcc.toFixed(1) + " m" : "-"}`, { size: 18, color: "666666" })], { span: 4, border: lightCellBorder })],
     }));
     children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
   } else {
-    children.push(textP("Tidak ada data waypoint.", { size: 20, color: "666666" }));
+    children.push(textP("Tidak ada titik koordinat foto yang direkam selama survey.", { size: 20, color: "666666" }));
   }
 
   const reportPhotos = photos.slice(0, PHOTO_LIMIT);

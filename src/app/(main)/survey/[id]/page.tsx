@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import SurveyMap from "@/components/survey/survey-map";
 import EmailReportButton from "@/components/survey/email-report-button";
 import WhatsAppReportButton from "@/components/survey/whatsapp-report-button";
+import { parseUtcDate, formatDurationMs } from "@/lib/utils";
 import { ArrowLeft, Clock, Route, MapPin, Camera, Download, ShieldCheck, Building2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +19,10 @@ export default async function SurveyDetailPage({ params }: { params: Promise<{ i
   const waypoints = route.waypoints || [];
   const photos = route.photos || [];
   const distance = route.totalDistance ?? 0;
-  const startTime = new Date(route.createdAt);
-  const endTime = route.endTime ? new Date(route.endTime) : null;
-  const durationMs = endTime ? endTime.getTime() - startTime.getTime() : 0;
-  const durationMin = Math.floor(durationMs / 60000);
-  const durStr = durationMin >= 60 ? `${Math.floor(durationMin / 60)} jam ${durationMin % 60} menit` : `${durationMin} menit`;
+  const startTime = parseUtcDate(route.startTime || route.createdAt);
+  const endTime = parseUtcDate(route.endTime);
+  const durationMs = startTime && endTime ? Math.max(0, endTime.getTime() - startTime.getTime()) : 0;
+  const durStr = formatDurationMs(durationMs);
 
   // Geocoding data wilayah awal survey & coverage
   let adminAddr: any = null;

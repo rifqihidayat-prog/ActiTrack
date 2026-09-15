@@ -47,6 +47,49 @@ interface LocationSummary {
   isWithinCoverage: boolean;
 }
 
+function compressImage(file: File, maxDim = 1280, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Gagal membaca file foto"));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Gagal memproses gambar"));
+      img.onload = () => {
+        try {
+          let width = img.width;
+          let height = img.height;
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
+          resolve(compressedDataUrl);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function SurveyTracker({
   userStoreName,
   userName,
@@ -74,6 +117,7 @@ export default function SurveyTracker({
   const [livePoints, setLivePoints] = useState<LatLng[]>([]);
   const [lastPos, setLastPos] = useState<LatLng | null>(null);
   const [currentAccuracy, setCurrentAccuracy] = useState<number | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // Summary / Finished States
   const [locationSummary, setLocationSummary] = useState<LocationSummary | null>(null);
@@ -152,7 +196,8 @@ export default function SurveyTracker({
   const startTracking = async () => {
     if (!form.storeName) return;
     try {
-      const id = await createSurveyRoute(form);
+      const nowIso = new Date().toISOString();
+      const id = await createSurveyRoute({ ...form, startTime: nowIso });
       setRouteId(id);
       routeIdRef.current = id;
       setTracking(true);
@@ -227,6 +272,10 @@ export default function SurveyTracker({
 
   // Selesai Tracking
   const stopTracking = async () => {
+    if (uploadingPhoto) {
+      alert("Sedang mengompres dan menyimpan foto terakhir ke database, mohon tunggu sebentar...");
+      return;
+    }
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     if (timerRef.current) clearInterval(timerRef.current);
     if (saveTimerRef.current) clearInterval(saveTimerRef.current);
@@ -280,12 +329,17 @@ export default function SurveyTracker({
     const file = e.target.files?.[0];
     if (!file || !routeId) return;
 
-    // Gunakan posisi GPS terakhir saat foto dijepret
-    const pos = lastPosRef.current || { lat: -6.2, lng: 106.8 };
+    // Gunakan posisi GPS terakhir saat foto dijepret (atau titik GPS terakhir yang valid)
+    const pos =
+      lastPosRef.current ||
+      (waypointsRef.current.length > 0 ? waypointsRef.current[waypointsRef.current.length - 1] : null) ||
+      { lat: -6.2, lng: 106.8 };
 
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const photoData = ev.target?.result as string;
+    setUploadingPhoto(true);
+
+    try {
+      // Kompresi di browser (mengurangi ukuran smartphone dari ~10MB ke ~100KB)
+      const photoData = await compressImage(file);
       const photoIndex = photos.length + 1;
       const photo: Photo = {
         lat: pos.lat,
@@ -295,15 +349,17 @@ export default function SurveyTracker({
       };
 
       setPhotos((p) => [...p, photo]);
-
-      try {
-        await saveSurveyPhoto(routeId, photo);
-      } catch (err) {
-        console.error("Gagal simpan foto:", err);
+      const res = await saveSurveyPhoto(routeId, photo);
+      if (!res?.success) {
+        throw new Error("Gagal menyimpan foto ke server");
       }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
+    } catch (err: any) {
+      console.error("Gagal simpan foto:", err);
+      alert("Gagal mengunggah foto: " + (err?.message || "Kesalahan jaringan / ukuran file"));
+    } finally {
+      setUploadingPhoto(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   // Kirim Laporan ke Email Atasan
@@ -496,20 +552,39 @@ export default function SurveyTracker({
           </div>
         )}
 
+        {/* Notifikasi Upload Foto Berjalan */}
+        {uploadingPhoto && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md border border-slate-700 animate-pulse">
+            <Loader2 size={16} className="animate-spin text-rose-400" />
+            <span>Mengompres & menyimpan foto...</span>
+          </div>
+        )}
+
         {/* Floating Bottom Action Bar (Ramah Satu Tangan di HP) */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/95 backdrop-blur-md border-t border-slate-100 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-30">
           <div className="max-w-md mx-auto flex gap-3">
             <button
               onClick={takePhoto}
-              className="flex-1 py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-sm shadow flex items-center justify-center gap-2 transition-all"
+              disabled={uploadingPhoto}
+              className="flex-1 py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-sm shadow flex items-center justify-center gap-2 transition-all disabled:opacity-60"
             >
-              <Camera size={18} className="text-rose-400" />
-              Ambil Foto ({photos.length})
+              {uploadingPhoto ? (
+                <>
+                  <Loader2 size={18} className="animate-spin text-rose-400" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Camera size={18} className="text-rose-400" />
+                  Ambil Foto ({photos.length})
+                </>
+              )}
             </button>
 
             <button
               onClick={stopTracking}
-              className="flex-1 py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-sm shadow flex items-center justify-center gap-2 transition-all"
+              disabled={uploadingPhoto}
+              className="flex-1 py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold text-sm shadow flex items-center justify-center gap-2 transition-all disabled:opacity-60"
             >
               <Square size={18} fill="white" />
               Selesai Tracking
