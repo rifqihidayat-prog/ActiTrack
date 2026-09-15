@@ -13,3 +13,4 @@ auth
 auth-wal
 README.md
 tsconfig.tsbuildinfo
+.initial-admin-password
