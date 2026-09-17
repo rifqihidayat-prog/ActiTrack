@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSurveyRoutes } from "@/lib/actions";
-import { FileText, Plus, Clock, Route, Store, Camera, Smartphone, Navigation } from "lucide-react";
+import { FileText, Plus, Clock, Route, Store, Camera, Smartphone, Navigation, MapIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
