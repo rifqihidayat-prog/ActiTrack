@@ -1,4 +1,4 @@
-﻿import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 
@@ -67,6 +67,16 @@ export const users = sqliteTable("users", {
   storeName: text("store_name").notNull(),
   role: text("role").notNull().default("user"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const stores = sqliteTable("stores", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  lat: real("lat").notNull(),
+  lng: real("lng").notNull(),
+  coverageRadiusKm: real("coverage_radius_km").notNull().default(5.0),
+  address: text("address").default(""),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
 
 export const surveyRoutes = sqliteTable("survey_routes", {

@@ -8,6 +8,9 @@ import {
   saveSurveyPhoto,
   getSurveyLocationSummary,
   sendSurveyReportEmail,
+  getStoreCoordinateByName,
+  saveStoreCoordinate,
+  getAllStoresWithCoordinates,
 } from "@/lib/actions";
 import { haversine } from "@/lib/gps";
 import SurveyMap from "./survey-map";
@@ -33,6 +36,10 @@ import {
   Send,
   Loader2,
   RefreshCw,
+  Smartphone,
+  Laptop,
+  LocateFixed,
+  History,
 } from "lucide-react";
 
 type Waypoint = { lat: number; lng: number; accuracy: number; timestamp: string };
@@ -130,6 +137,101 @@ export default function SurveyTracker({
   const [managerEmail, setManagerEmail] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailStatus, setEmailStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  // Store Coordinate States
+  const [storeCoord, setStoreCoord] = useState<{ lat: number; lng: number; radiusKm?: number } | null>(null);
+  const [checkingStoreCoord, setCheckingStoreCoord] = useState(false);
+  const [savingCoord, setSavingCoord] = useState(false);
+  const [saveCoordMessage, setSaveCoordMessage] = useState<string | null>(null);
+  const [suggestedStores, setSuggestedStores] = useState<string[]>([]);
+
+  // Mobile Device Guard States (Khusus Akses Mobile/HP)
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [bypassDesktopGuard, setBypassDesktopGuard] = useState(false);
+
+  useEffect(() => {
+    const checkScreen = () => {
+      setIsDesktop(window.innerWidth > 768);
+    };
+    checkScreen();
+    window.addEventListener("resize", checkScreen);
+    return () => window.removeEventListener("resize", checkScreen);
+  }, []);
+
+  // Muat daftar rekomendasi toko
+  useEffect(() => {
+    getAllStoresWithCoordinates()
+      .then((list) => {
+        setSuggestedStores(list.map((s) => s.name));
+      })
+      .catch(() => {});
+  }, []);
+
+  // Cek koordinat acuan toko setiap nama toko berubah
+  useEffect(() => {
+    const query = form.storeName.trim();
+    if (!query) {
+      setStoreCoord(null);
+      return;
+    }
+    let cancelled = false;
+    setCheckingStoreCoord(true);
+    getStoreCoordinateByName(query)
+      .then((coord) => {
+        if (!cancelled) {
+          if (coord) {
+            setStoreCoord({ lat: coord.lat, lng: coord.lng, radiusKm: coord.coverageRadiusKm });
+          } else {
+            setStoreCoord(null);
+          }
+          setCheckingStoreCoord(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingStoreCoord(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.storeName]);
+
+  const handleSaveCurrentLocationAsStore = () => {
+    if (!form.storeName.trim()) {
+      alert("Silakan masukkan nama toko cabang terlebih dahulu.");
+      return;
+    }
+    if (!navigator.geolocation) {
+      alert("Perangkat Anda tidak mendukung fitur lokasi GPS.");
+      return;
+    }
+    setSavingCoord(true);
+    setSaveCoordMessage(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const res = await saveStoreCoordinate(form.storeName, lat, lng, 5.0);
+          if (res.success) {
+            setStoreCoord({ lat, lng, radiusKm: 5.0 });
+            setSaveCoordMessage("Titik koordinat toko berhasil disimpan!");
+            setTimeout(() => setSaveCoordMessage(null), 3500);
+          } else {
+            alert(res.message);
+          }
+        } catch (err: any) {
+          alert("Gagal menyimpan titik koordinat toko: " + (err?.message || "Kesalahan"));
+        } finally {
+          setSavingCoord(false);
+        }
+      },
+      (err) => {
+        setSavingCoord(false);
+        alert("Gagal membaca GPS: Pastikan izin lokasi HP Anda aktif.");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   // Refs
   const waypointsRef = useRef<Waypoint[]>([]);
@@ -389,6 +491,63 @@ export default function SurveyTracker({
   };
 
   // ==========================================
+  // VIEW GUARD: Khusus Mobile / Smartphone
+  // ==========================================
+  if (isDesktop && !bypassDesktopGuard) {
+    return (
+      <div className="max-w-md mx-auto py-6 px-3">
+        <div className="bg-white rounded-3xl p-7 text-center shadow-lg border border-slate-100 space-y-5">
+          <div className="relative w-18 h-18 mx-auto flex items-center justify-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/25">
+              <Smartphone size={32} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase bg-blue-50 text-blue-700 border border-blue-200">
+              <Smartphone size={12} /> Khusus Akses Smartphone / HP
+            </span>
+            <h2 className="text-xl font-extrabold text-slate-800">Buka di Smartphone Anda</h2>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
+              Fitur <strong>Survey & Tracking Lapangan</strong> dirancang khusus untuk perangkat HP karena membutuhkan sensor GPS aktif dan kamera saat bergerak di rute observasi.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70 text-left space-y-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              <ShieldCheck size={16} className="text-emerald-600" />
+              Fitur Khusus HP:
+            </div>
+            <ul className="text-[11px] text-slate-500 space-y-1.5 pl-5 list-disc">
+              <li>Perekaman rute GPS real-time (langkah kaki / kendaraan)</li>
+              <li>Pengambilan foto dokumentasi lapangan dengan kamera HP</li>
+              <li>Deteksi otomatis coverage toko 5 km di 4 penjuru mata angin</li>
+            </ul>
+          </div>
+
+          <div className="space-y-2.5 pt-1">
+            <button
+              onClick={() => router.push("/survey")}
+              className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 active:scale-98"
+            >
+              <History size={16} />
+              Buka Riwayat Survey (Laptop & PC)
+            </button>
+
+            <button
+              onClick={() => setBypassDesktopGuard(true)}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
+            >
+              <Laptop size={14} />
+              Lanjutkan di Laptop (Mode Pratinjau Mobile)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
   // VIEW 1: Form Awal Sebelum Mulai (Mobile Ready)
   // ==========================================
   if (!tracking && !finished) {
@@ -425,11 +584,91 @@ export default function SurveyTracker({
                 <Store size={14} className="text-blue-600" /> Toko Cabang
               </label>
               <input
+                list="store-suggestions"
                 value={form.storeName}
                 onChange={(e) => setForm((p) => ({ ...p, storeName: e.target.value }))}
-                placeholder="Contoh: Hijrahfood Cimuning"
+                placeholder="Pilih atau ketik nama toko cabang..."
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all"
               />
+              <datalist id="store-suggestions">
+                {suggestedStores.map((s, idx) => (
+                  <option key={idx} value={s} />
+                ))}
+              </datalist>
+
+              {/* Status & Pengaturan Titik Koordinat Toko oleh Pengguna */}
+              {form.storeName.trim().length > 1 && (
+                <div className="mt-2 text-xs">
+                  {checkingStoreCoord ? (
+                    <div className="flex items-center gap-1.5 text-slate-400 py-1">
+                      <Loader2 size={13} className="animate-spin text-blue-500" />
+                      <span>Memeriksa titik koordinat toko...</span>
+                    </div>
+                  ) : storeCoord ? (
+                    <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                          <CheckCircle2 size={15} className="text-emerald-600" />
+                          <span>Titik Toko Terdaftar</span>
+                        </div>
+                        <span className="text-[10px] bg-emerald-200/60 text-emerald-800 px-2 py-0.5 rounded-full font-medium">
+                          Radius 5 km
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-emerald-700 font-mono">
+                        {storeCoord.lat.toFixed(5)}, {storeCoord.lng.toFixed(5)}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSaveCurrentLocationAsStore}
+                        disabled={savingCoord}
+                        className="w-full py-1.5 px-2.5 rounded-lg bg-white border border-emerald-300 text-emerald-700 text-[11px] font-semibold hover:bg-emerald-100/50 flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                      >
+                        {savingCoord ? (
+                          <>
+                            <Loader2 size={12} className="animate-spin" /> Mengambil GPS...
+                          </>
+                        ) : (
+                          <>
+                            <LocateFixed size={12} /> Perbarui Titik dari GPS Saya Sekarang
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl space-y-2">
+                      <div className="flex items-start gap-1.5 text-amber-800 font-medium text-[11px] leading-tight">
+                        <AlertCircle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                        <span>
+                          Titik koordinat acuan untuk &quot;{form.storeName}&quot; belum terdaftar. Simpan lokasi toko agar radar coverage 5 km aktif.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSaveCurrentLocationAsStore}
+                        disabled={savingCoord}
+                        className="w-full py-2 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                      >
+                        {savingCoord ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin" /> Menyimpan GPS Toko...
+                          </>
+                        ) : (
+                          <>
+                            <MapPin size={13} /> Set Titik Toko dari GPS Saya Sekarang
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {saveCoordMessage && (
+                    <div className="mt-1.5 text-emerald-600 font-semibold text-[11px] flex items-center gap-1">
+                      <CheckCircle2 size={13} /> {saveCoordMessage}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>

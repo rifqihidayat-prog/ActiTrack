@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSurveyRouteById } from "@/lib/actions";
+import { getSurveyRouteById, getStoreCoordinateByName } from "@/lib/actions";
 import { buildMapPNG, buildDocx } from "@/lib/report-doc";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -18,7 +18,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     } catch (mapErr: any) {
       console.error("MAP BUILD ERROR:", mapErr?.message);
     }
-    const docx = await buildDocx(route, mapB64);
+    const storeCoord = await getStoreCoordinateByName(route.storeName);
+    const docx = await buildDocx(route, mapB64, storeCoord);
     const safeName = (route.storeName || "survey").replace(/[^a-zA-Z0-9]/g, "_");
 
     return new NextResponse(new Uint8Array(docx), {

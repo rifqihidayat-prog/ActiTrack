@@ -245,7 +245,7 @@ async function photoBuffer(dataUri: string): Promise<Buffer | null> {
   }
 }
 
-export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
+export async function buildDocx(route: any, mapB64: string, customStore?: any): Promise<Buffer> {
   const waypoints = validPoints(route.waypoints || []);
   const photos = route.photos || [];
   const distance = route.totalDistance ?? 0;
@@ -287,7 +287,7 @@ export async function buildDocx(route: any, mapB64: string): Promise<Buffer> {
   let coverageInfo: any = null;
   if (waypoints.length > 0) {
     adminAddr = await getAdministrativeAddress(waypoints[0].lat, waypoints[0].lng);
-    coverageInfo = checkStoreCoverage(route.storeName, waypoints[0].lat, waypoints[0].lng);
+    coverageInfo = checkStoreCoverage(route.storeName, waypoints[0].lat, waypoints[0].lng, customStore);
   }
 
   const infoRows: TableRow[] = [

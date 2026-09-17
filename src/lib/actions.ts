@@ -1,11 +1,11 @@
 "use server";
 import { db } from "@/db";
-import { submissions, submissionBudgets, eventResults, eventCostItems, eventPromoItems, users, surveyRoutes, surveyWaypoints, surveyPhotos } from "@/db/schema";
+import { submissions, submissionBudgets, eventResults, eventCostItems, eventPromoItems, users, surveyRoutes, surveyWaypoints, surveyPhotos, stores } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { trackDistance } from "@/lib/gps";
-import { getAdministrativeAddress, checkStoreCoverage } from "@/lib/geo";
+import { getAdministrativeAddress, checkStoreCoverage, getStoreCoordinate, type StoreCoordinate, KNOWN_STORES } from "@/lib/geo";
 import { sendSurveyEmail } from "@/lib/email";
 import { buildMapPNG, buildDocx } from "@/lib/report-doc";
 import { parseUtcDate, formatDurationMs } from "@/lib/utils";
@@ -477,12 +477,101 @@ export async function healSurveyRoutes(): Promise<{ healed: number; skipped: num
   return { healed, skipped: routes.length - healed };
 }
 
+export async function getStoreCoordinateByName(storeName: string): Promise<StoreCoordinate | null> {
+  if (!storeName) return null;
+  const clean = storeName.trim().toLowerCase();
+  try {
+    const allDbStores = await db.query.stores.findMany();
+    const match = allDbStores.find(
+      s => s.name.toLowerCase() === clean || clean.includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(clean)
+    );
+    if (match) {
+      return {
+        name: match.name,
+        lat: match.lat,
+        lng: match.lng,
+        coverageRadiusKm: match.coverageRadiusKm || 5.0,
+      };
+    }
+  } catch (err) {
+    console.warn("Could not query stores table:", err);
+  }
+  return getStoreCoordinate(storeName);
+}
+
+export async function saveStoreCoordinate(
+  storeName: string,
+  lat: number,
+  lng: number,
+  coverageRadiusKm: number = 5.0,
+  address: string = ""
+) {
+  if (!storeName || !storeName.trim()) {
+    return { success: false, message: "Nama toko wajib diisi." };
+  }
+  const cleanName = storeName.trim();
+  try {
+    const existing = await db.query.stores.findFirst({
+      where: eq(stores.name, cleanName),
+    });
+
+    if (existing) {
+      await db.update(stores).set({
+        lat,
+        lng,
+        coverageRadiusKm,
+        address,
+        updatedAt: sql`(datetime('now'))`,
+      }).where(eq(stores.id, existing.id));
+    } else {
+      await db.insert(stores).values({
+        name: cleanName,
+        lat,
+        lng,
+        coverageRadiusKm,
+        address,
+      });
+    }
+
+    try {
+      revalidatePath("/survey");
+      revalidatePath("/survey/new");
+    } catch {}
+    return { success: true, message: `Titik koordinat untuk "${cleanName}" berhasil disimpan!` };
+  } catch (err: any) {
+    console.error("Gagal simpan koordinat toko:", err);
+    return { success: false, message: err?.message || "Gagal menyimpan titik koordinat toko." };
+  }
+}
+
+export async function getAllStoresWithCoordinates(): Promise<StoreCoordinate[]> {
+  const result: Record<string, StoreCoordinate> = {};
+  for (const [name, coord] of Object.entries(KNOWN_STORES)) {
+    result[name.toLowerCase()] = { ...coord };
+  }
+  try {
+    const dbStores = await db.query.stores.findMany();
+    for (const s of dbStores) {
+      result[s.name.toLowerCase()] = {
+        name: s.name,
+        lat: s.lat,
+        lng: s.lng,
+        coverageRadiusKm: s.coverageRadiusKm,
+      };
+    }
+  } catch (err) {
+    console.warn("Could not query dbStores:", err);
+  }
+  return Object.values(result);
+}
+
 export async function getSurveyLocationSummary(lat: number, lng: number, storeName: string) {
-  const [address, coverage] = await Promise.all([
+  const [address, storeCoord] = await Promise.all([
     getAdministrativeAddress(lat, lng),
-    Promise.resolve(checkStoreCoverage(storeName, lat, lng)),
+    getStoreCoordinateByName(storeName),
   ]);
-  return { address, coverage };
+  const coverage = checkStoreCoverage(storeName, lat, lng, storeCoord);
+  return { address, coverage, storeCoord };
 }
 
 export async function sendSurveyReportEmail(routeId: number, recipientEmail: string) {
@@ -501,14 +590,15 @@ export async function sendSurveyReportEmail(routeId: number, recipientEmail: str
     console.warn("Gagal render peta PNG:", err?.message);
   }
 
-  const docxBuffer = await buildDocx(route, mapB64);
+  const storeCoord = await getStoreCoordinateByName(route.storeName);
+  const docxBuffer = await buildDocx(route, mapB64, storeCoord);
 
   const startPt = waypoints[0];
   let adminAddr: any = null;
   let coverage: any = null;
   if (startPt) {
     adminAddr = await getAdministrativeAddress(startPt.lat, startPt.lng);
-    coverage = checkStoreCoverage(route.storeName, startPt.lat, startPt.lng);
+    coverage = checkStoreCoverage(route.storeName, startPt.lat, startPt.lng, storeCoord);
   }
 
   const startTime = parseUtcDate(route.startTime || route.createdAt);

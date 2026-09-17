@@ -9,9 +9,9 @@ export default async function NewSurveyPage() {
   if (!session) redirect("/login");
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6" style={{ color: "var(--ga-text)" }}>Survey Baru</h1>
+    <div className="max-w-md mx-auto w-full">
       <SurveyTracker userStoreName={session.storeName} userName={session.name} />
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSurveyRoutes } from "@/lib/actions";
-import { MapIcon, Plus, Clock, Route, Store, Camera } from "lucide-react";
+import { FileText, Plus, Clock, Route, Store, Camera, Smartphone, Navigation } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
@@ -12,13 +12,15 @@ export default async function SurveyPage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: "var(--ga-text)" }}>Survey & Tracking</h1>
-          <p className="text-sm mt-1" style={{ color: "var(--ga-text-secondary)" }}>Rekam rute kunjungan dan dokumentasi lapangan</p>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--ga-text)" }}>Riwayat Survey</h1>
+          <p className="text-sm mt-1" style={{ color: "var(--ga-text-secondary)" }}>
+            Daftar rekaman rute kunjungan, dokumentasi lapangan, dan unduh laporan Word
+          </p>
         </div>
         <Link href="/survey/new"
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all shadow-sm"
           style={{ background: "var(--ga-blue)" }}>
-          <Plus size={16} /> Baru
+          <Smartphone size={16} /> Survey Baru (HP)
         </Link>
       </div>
 

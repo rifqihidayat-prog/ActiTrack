@@ -103,8 +103,14 @@ export function getCardinalDirection(bearing: number): "Utara" | "Timur" | "Sela
 /**
  * Cek apakah koordinat survei berada dalam radius coverage toko (5 km per 4 mata angin: Utara, Timur, Selatan, Barat)
  */
-export function checkStoreCoverage(storeName: string, lat: number, lng: number, defaultRadiusKm = 5.0) {
-  const store = getStoreCoordinate(storeName);
+export function checkStoreCoverage(
+  storeName: string,
+  lat: number,
+  lng: number,
+  customStore?: StoreCoordinate | null,
+  defaultRadiusKm = 5.0
+) {
+  const store = customStore || getStoreCoordinate(storeName);
   if (!store) {
     return {
       hasStoreCoord: false,

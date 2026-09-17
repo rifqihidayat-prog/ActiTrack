@@ -1,15 +1,16 @@
-﻿"use client";
+"use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { LayoutDashboard, CalendarDays, ClipboardPlus, ClipboardCheck, Activity, MapIcon, Menu, X, ChevronLeft, BarChart3, TrendingUp, Users, LogOut, History } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ClipboardPlus, ClipboardCheck, Activity, MapIcon, Menu, X, ChevronLeft, BarChart3, TrendingUp, Users, LogOut, History, Navigation, FileText, Smartphone } from "lucide-react";
 
 const allNavItems = [
   { href: "/", label: "Dashboard", icon: BarChart3, adminOnly: false },
-  { href: "/survey", label: "Survey & Tracking", icon: MapIcon, adminOnly: false },
+  { href: "/survey/new", label: "Survey & Tracking", icon: Navigation, adminOnly: false, isMobileApp: true },
+  { href: "/survey", label: "Riwayat Survey", icon: FileText, adminOnly: false },
   { href: "/realisasi", label: "Realisasi", icon: TrendingUp, adminOnly: false },
-  { href: "/activity", label: "Riwayat", icon: History, adminOnly: false },
+  { href: "/activity", label: "Riwayat Aktivasi", icon: History, adminOnly: false },
   { href: "/submissions/new", label: "Form Pengajuan", icon: ClipboardPlus, adminOnly: false },
   { href: "/calendar", label: "Kalender", icon: CalendarDays, adminOnly: false },
   { href: "/admin", label: "Approval", icon: ClipboardCheck, adminOnly: true },
@@ -50,7 +51,15 @@ export default function Sidebar({ userRole, userName, pendingCount }: { userRole
         <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-widest" style={{ color: "var(--ga-text-muted)" }}>Menu Utama</p>
           {navItems.map((item) => {
-            const isActive = path === item.href || (item.href !== "/" && path.startsWith(item.href));
+            const isActive =
+              item.href === "/survey/new"
+                ? path === "/survey/new"
+                : item.href === "/survey"
+                ? path.startsWith("/survey") && path !== "/survey/new"
+                : item.href === "/"
+                ? path === "/"
+                : path.startsWith(item.href);
+
             return (
               <Link key={item.href} href={item.href} onClick={() => setOpen(false)}
                 className={cn("flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
@@ -62,6 +71,11 @@ export default function Sidebar({ userRole, userName, pendingCount }: { userRole
               >
                 <item.icon size={18} />
                 <span className="flex-1">{item.label}</span>
+                {item.isMobileApp && (
+                  <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <Smartphone size={10} /> HP
+                  </span>
+                )}
                 {item.href === "/admin" && pendingCount !== undefined && pendingCount > 0 && (
                   <span className="text-[10px] font-bold text-white bg-rose-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1">{pendingCount}</span>
                 )}
