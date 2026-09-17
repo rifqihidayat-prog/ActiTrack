@@ -66,6 +66,9 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   storeName: text("store_name").notNull(),
   role: text("role").notNull().default("user"),
+  storeLat: real("store_lat"),
+  storeLng: real("store_lng"),
+  coverageRadiusKm: real("coverage_radius_km").default(5.0),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 

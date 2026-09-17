@@ -27,6 +27,10 @@ function init() {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `).catch((err) => console.error("Error ensuring stores table:", err));
+
+    sqlite.execute("ALTER TABLE users ADD COLUMN store_lat REAL").catch(() => {});
+    sqlite.execute("ALTER TABLE users ADD COLUMN store_lng REAL").catch(() => {});
+    sqlite.execute("ALTER TABLE users ADD COLUMN coverage_radius_km REAL DEFAULT 5.0").catch(() => {});
   }
 }
 

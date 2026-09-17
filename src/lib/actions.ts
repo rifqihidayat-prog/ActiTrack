@@ -354,21 +354,90 @@ export async function getCalendarEvents() {
 
 // === USER ACTIONS ===
 export async function getUsers() {
-  return await db.select({ id: users.id, username: users.username, name: users.name, storeName: users.storeName, role: users.role, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt));
+  const userList = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      name: users.name,
+      storeName: users.storeName,
+      role: users.role,
+      storeLat: users.storeLat,
+      storeLng: users.storeLng,
+      coverageRadiusKm: users.coverageRadiusKm,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .orderBy(desc(users.createdAt));
+
+  const allStores = await getAllStoresWithCoordinates();
+  const storeMap = new Map(allStores.map(s => [s.name.toLowerCase().trim(), s]));
+
+  return userList.map(u => {
+    const known = storeMap.get(u.storeName.toLowerCase().trim());
+    return {
+      ...u,
+      storeLat: u.storeLat != null ? u.storeLat : known?.lat ?? null,
+      storeLng: u.storeLng != null ? u.storeLng : known?.lng ?? null,
+      coverageRadiusKm: u.coverageRadiusKm != null ? u.coverageRadiusKm : known?.coverageRadiusKm ?? 5.0,
+    };
+  });
 }
+
 export async function getStoreList() {
   const store = await getUserStore();
   if (store) return [store];
   const rows = await db.select({ storeName: users.storeName }).from(users);
   return [...new Set(rows.map(r => r.storeName))].filter(Boolean).sort();
 }
-export async function createUser(data: { username: string; password: string; name: string; storeName: string; role: string }) {
+
+export async function createUser(data: {
+  username: string;
+  password: string;
+  name: string;
+  storeName: string;
+  role: string;
+  storeLat?: number | null;
+  storeLng?: number | null;
+  coverageRadiusKm?: number;
+}) {
   await requireAdmin();
   const { hashPassword } = await import("@/lib/auth");
-  await db.insert(users).values({ ...data, password: hashPassword(data.password) });
-  revalidatePath("/admin/users");
+  const payload = {
+    username: data.username,
+    password: hashPassword(data.password),
+    name: data.name,
+    storeName: data.storeName,
+    role: data.role,
+    storeLat: data.storeLat != null ? data.storeLat : null,
+    storeLng: data.storeLng != null ? data.storeLng : null,
+    coverageRadiusKm: data.coverageRadiusKm || 5.0,
+  };
+  await db.insert(users).values(payload);
+
+  if (data.storeLat != null && data.storeLng != null && data.storeName) {
+    await saveStoreCoordinate(data.storeName, data.storeLat, data.storeLng, data.coverageRadiusKm || 5.0);
+  }
+
+  try {
+    revalidatePath("/admin/users");
+    revalidatePath("/survey");
+    revalidatePath("/survey/new");
+  } catch {}
 }
-export async function updateUser(id: number, data: { username?: string; password?: string; name?: string; storeName?: string; role?: string }) {
+
+export async function updateUser(
+  id: number,
+  data: {
+    username?: string;
+    password?: string;
+    name?: string;
+    storeName?: string;
+    role?: string;
+    storeLat?: number | null;
+    storeLng?: number | null;
+    coverageRadiusKm?: number;
+  }
+) {
   await requireAdmin();
   const upd: any = { ...data };
   if (data.password) {
@@ -376,7 +445,17 @@ export async function updateUser(id: number, data: { username?: string; password
     upd.password = hashPassword(data.password);
   } else delete upd.password;
   await db.update(users).set(upd).where(eq(users.id, id));
-  revalidatePath("/admin/users");
+
+  const targetStoreName = data.storeName;
+  if (targetStoreName && data.storeLat != null && data.storeLng != null) {
+    await saveStoreCoordinate(targetStoreName, data.storeLat, data.storeLng, data.coverageRadiusKm || 5.0);
+  }
+
+  try {
+    revalidatePath("/admin/users");
+    revalidatePath("/survey");
+    revalidatePath("/survey/new");
+  } catch {}
 }
 export async function deleteUser(id: number) {
   await requireAdmin();
