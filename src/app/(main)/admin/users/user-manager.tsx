@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createUser, updateUser, deleteUser } from "@/lib/actions";
 import Button from "@/components/ui/button";
-import { Plus, Pencil, Trash2, User, X, MapPin, LocateFixed, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, User, X, MapPin, LocateFixed, Loader2, Compass, CheckCircle2, AlertCircle } from "lucide-react";
+import { parseCoordinatesFromInput } from "@/lib/geo";
 
 type UserData = {
   id: number;
@@ -32,6 +33,8 @@ export default function UserManager({ users }: { users: UserData[] }) {
   });
   const [loading, setLoading] = useState(false);
   const [gettingGps, setGettingGps] = useState(false);
+  const [gmapsInput, setGmapsInput] = useState("");
+  const [parseSuccessMsg, setParseSuccessMsg] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const reset = () => {
@@ -45,6 +48,8 @@ export default function UserManager({ users }: { users: UserData[] }) {
       storeLng: "",
       coverageRadiusKm: "5.0",
     });
+    setGmapsInput("");
+    setParseSuccessMsg(null);
     setEditing(null);
     setShowForm(false);
     setError("");
@@ -61,8 +66,43 @@ export default function UserManager({ users }: { users: UserData[] }) {
       storeLng: u.storeLng != null ? String(u.storeLng) : "",
       coverageRadiusKm: u.coverageRadiusKm != null ? String(u.coverageRadiusKm) : "5.0",
     });
+    setGmapsInput("");
+    setParseSuccessMsg(null);
     setEditing(u);
     setShowForm(true);
+  };
+
+  const handleGmapsPaste = (val: string) => {
+    setGmapsInput(val);
+    if (!val.trim()) {
+      setParseSuccessMsg(null);
+      return;
+    }
+    const parsed = parseCoordinatesFromInput(val);
+    if (parsed) {
+      setForm((p) => ({
+        ...p,
+        storeLat: parsed.lat.toString(),
+        storeLng: parsed.lng.toString(),
+      }));
+      setParseSuccessMsg(`✅ Berhasil membaca koordinat Maps: ${parsed.lat}, ${parsed.lng}`);
+    } else {
+      setParseSuccessMsg(null);
+    }
+  };
+
+  const handleLatChange = (val: string) => {
+    const parsed = parseCoordinatesFromInput(val);
+    if (parsed) {
+      setForm((p) => ({
+        ...p,
+        storeLat: parsed.lat.toString(),
+        storeLng: parsed.lng.toString(),
+      }));
+      setParseSuccessMsg(`✅ Berhasil membaca koordinat: ${parsed.lat}, ${parsed.lng}`);
+    } else {
+      setForm((p) => ({ ...p, storeLat: val }));
+    }
   };
 
   const handleGetCurrentGps = () => {
@@ -78,6 +118,7 @@ export default function UserManager({ users }: { users: UserData[] }) {
           storeLat: pos.coords.latitude.toFixed(6),
           storeLng: pos.coords.longitude.toFixed(6),
         }));
+        setParseSuccessMsg(`✅ Berhasil membaca GPS lokasi saat ini!`);
         setGettingGps(false);
       },
       (err) => {
@@ -205,7 +246,7 @@ export default function UserManager({ users }: { users: UserData[] }) {
             </div>
 
             {/* Bagian Titik Koordinat Toko Cabang */}
-            <div className="sm:col-span-2 bg-slate-50/80 p-4 rounded-xl border border-slate-200 space-y-3 mt-1">
+            <div className="sm:col-span-2 bg-gradient-to-br from-slate-50 to-blue-50/30 p-4 rounded-xl border border-blue-100 space-y-3 mt-1">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <MapPin size={16} className="text-blue-600" />
@@ -215,7 +256,7 @@ export default function UserManager({ users }: { users: UserData[] }) {
                   type="button"
                   onClick={handleGetCurrentGps}
                   disabled={gettingGps}
-                  className="text-xs bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium px-2.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+                  className="text-xs bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-medium px-2.5 py-1.5 rounded-lg shadow-xs flex items-center gap-1.5 transition-all"
                 >
                   {gettingGps ? (
                     <Loader2 size={13} className="animate-spin text-blue-600" />
@@ -225,17 +266,66 @@ export default function UserManager({ users }: { users: UserData[] }) {
                   <span>Ambil GPS Saat Ini</span>
                 </button>
               </div>
-              <p className="text-xs text-slate-500">
-                Titik GPS ini menjadi acuan radar 5 km di 4 arah mata angin (Utara, Timur, Selatan, Barat) saat tim lapangan melakukan survei.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+              {/* Kotak Copas Google Maps Cerdas (Auto-Detect) */}
+              <div className="bg-white p-3.5 rounded-xl border border-blue-200 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Compass size={15} className="text-blue-600" />
+                    Tempel (Paste) Link / Koordinat Google Maps
+                  </label>
+                  <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">
+                    Auto-Read Koordinat
+                  </span>
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="Paste link Google Maps atau koordinat di sini (contoh: -6.2088, 106.8456 atau https://maps.app.goo.gl/...)"
+                    value={gmapsInput}
+                    onChange={(e) => handleGmapsPaste(e.target.value)}
+                    className="w-full pl-3 pr-28 py-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none text-xs font-mono bg-slate-50/40 focus:bg-white transition-all text-slate-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        if (text) {
+                          handleGmapsPaste(text);
+                        } else {
+                          alert("Clipboard masih kosong. Silakan copy link atau koordinat dari Google Maps terlebih dahulu.");
+                        }
+                      } catch {
+                        alert("Silakan tekan Ctrl+V (atau klik kanan > Paste) di dalam kotak teks ini.");
+                      }
+                    }}
+                    className="absolute right-1 text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white px-3 py-1.5 rounded-md shadow-xs transition-all"
+                  >
+                    📋 Paste
+                  </button>
+                </div>
+                {parseSuccessMsg ? (
+                  <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
+                    <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                    <span>{parseSuccessMsg}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400">
+                    💡 <em>Cukup copy link Google Maps atau klik kanan titik di Google Maps lalu paste di sini, koordinat Latitude &amp; Longitude akan terisi otomatis.</em>
+                  </p>
+                )}
+              </div>
+
+              {/* Kolom Hasil Latitude, Longitude, Radius */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Latitude</label>
                   <input
                     type="text"
                     placeholder="-6.2088"
                     value={form.storeLat}
-                    onChange={(e) => setForm((p) => ({ ...p, storeLat: e.target.value }))}
+                    onChange={(e) => handleLatChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-blue-400 outline-none text-xs font-mono bg-white"
                   />
                 </div>

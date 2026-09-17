@@ -40,7 +40,9 @@ import {
   Laptop,
   LocateFixed,
   History,
+  Compass,
 } from "lucide-react";
+import { parseCoordinatesFromInput } from "@/lib/geo";
 
 type Waypoint = { lat: number; lng: number; accuracy: number; timestamp: string };
 type Photo = { lat: number; lng: number; photoData: string; caption: string };
@@ -143,6 +145,8 @@ export default function SurveyTracker({
   const [checkingStoreCoord, setCheckingStoreCoord] = useState(false);
   const [savingCoord, setSavingCoord] = useState(false);
   const [saveCoordMessage, setSaveCoordMessage] = useState<string | null>(null);
+  const [trackerGmapsInput, setTrackerGmapsInput] = useState("");
+  const [showGmapsInput, setShowGmapsInput] = useState(false);
   const [suggestedStores, setSuggestedStores] = useState<string[]>([]);
 
   // Mobile Device Guard States (Khusus Akses Mobile/HP)
@@ -231,6 +235,32 @@ export default function SurveyTracker({
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  };
+
+  const handleSaveFromGmapsInput = async () => {
+    if (!trackerGmapsInput.trim() || !form.storeName.trim()) return;
+    const parsed = parseCoordinatesFromInput(trackerGmapsInput);
+    if (!parsed) {
+      alert("Format Google Maps tidak dikenali. Silakan paste link Maps atau koordinat seperti: -6.2088, 106.8456");
+      return;
+    }
+    setSavingCoord(true);
+    try {
+      const res = await saveStoreCoordinate(form.storeName, parsed.lat, parsed.lng, 5.0);
+      if (res.success) {
+        setStoreCoord({ lat: parsed.lat, lng: parsed.lng, radiusKm: 5.0 });
+        setSaveCoordMessage("Titik koordinat toko berhasil disimpan dari Google Maps!");
+        setShowGmapsInput(false);
+        setTrackerGmapsInput("");
+        setTimeout(() => setSaveCoordMessage(null), 3500);
+      } else {
+        alert(res.message);
+      }
+    } catch (err: any) {
+      alert("Gagal menyimpan: " + (err?.message || "Kesalahan"));
+    } finally {
+      setSavingCoord(false);
+    }
   };
 
   // Refs
@@ -636,18 +666,19 @@ export default function SurveyTracker({
                       </button>
                     </div>
                   ) : (
-                    <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl space-y-2">
+                    <div className="p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl space-y-2.5">
                       <div className="flex items-start gap-1.5 text-amber-800 font-medium text-[11px] leading-tight">
                         <AlertCircle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
                         <span>
                           Titik koordinat acuan untuk &quot;{form.storeName}&quot; belum terdaftar. Simpan lokasi toko agar radar coverage 5 km aktif.
                         </span>
                       </div>
+
                       <button
                         type="button"
                         onClick={handleSaveCurrentLocationAsStore}
                         disabled={savingCoord}
-                        className="w-full py-2 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                        className="w-full py-2 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-98"
                       >
                         {savingCoord ? (
                           <>
@@ -659,6 +690,39 @@ export default function SurveyTracker({
                           </>
                         )}
                       </button>
+
+                      {showGmapsInput ? (
+                        <div className="pt-2 border-t border-amber-200/70 space-y-1.5">
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              placeholder="Paste link Google Maps atau -6.2088, 106.8456..."
+                              value={trackerGmapsInput}
+                              onChange={(e) => setTrackerGmapsInput(e.target.value)}
+                              className="flex-1 px-3 py-1.5 rounded-lg border border-amber-300 text-xs bg-white outline-none font-mono text-slate-800"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSaveFromGmapsInput}
+                              disabled={savingCoord || !trackerGmapsInput.trim()}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs disabled:opacity-50 flex items-center gap-1"
+                            >
+                              Simpan
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-amber-700">
+                            💡 Bisa paste URL Google Maps atau teks koordinat langsung.
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setShowGmapsInput(true)}
+                          className="w-full py-1 text-center text-xs text-amber-800 font-semibold underline underline-offset-2 hover:text-amber-900 flex items-center justify-center gap-1"
+                        >
+                          <Compass size={13} /> Atau Copas Link / Koordinat Google Maps
+                        </button>
+                      )}
                     </div>
                   )}
 

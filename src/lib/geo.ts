@@ -15,6 +15,73 @@ export interface StoreCoordinate {
   coverageRadiusKm: number;
 }
 
+/**
+ * Validasi rentang latitude & longitude
+ */
+export function isValidLatLng(lat: number, lng: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+/**
+ * Mengekstrak koordinat lat & lng dari berbagai format input Google Maps:
+ * 1. URL Google Maps lengkap (/@lat,lng atau ?q=lat,lng atau !3dlat!4dlng)
+ * 2. Pasangan koordinat langsung dari Google Maps (-6.2088, 106.8456)
+ * 3. Format DMS (6°12'31.7"S 106°50'44.2"E)
+ */
+export function parseCoordinatesFromInput(input: string): { lat: number; lng: number } | null {
+  if (!input || typeof input !== "string") return null;
+  const str = decodeURIComponent(input.trim());
+
+  // 1. Google Maps URL: @lat,lng (contoh: https://www.google.com/maps/.../@-6.2088,106.8456,17z)
+  const atMatch = str.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (isValidLatLng(lat, lng)) return { lat, lng };
+  }
+
+  // 2. Google Maps URL query: ?q=lat,lng atau ?query=lat,lng atau ?ll=lat,lng
+  const queryMatch = str.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (queryMatch) {
+    const lat = parseFloat(queryMatch[1]);
+    const lng = parseFloat(queryMatch[2]);
+    if (isValidLatLng(lat, lng)) return { lat, lng };
+  }
+
+  // 3. Google Maps data embed: !3dlat!4dlng
+  const embedMatch = str.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (embedMatch) {
+    const lat = parseFloat(embedMatch[1]);
+    const lng = parseFloat(embedMatch[2]);
+    if (isValidLatLng(lat, lng)) return { lat, lng };
+  }
+
+  // 4. Format DMS: 6°12'31.7"S 106°50'44.2"E
+  const dmsMatch = str.match(
+    /(\d+)[°\s]+(\d+)['\s]+([\d.]+)?["\s]*([NSEWnsew])\s*[,/]?\s*(\d+)[°\s]+(\d+)['\s]+([\d.]+)?["\s]*([NSEWnsew])/
+  );
+  if (dmsMatch) {
+    const parseDms = (deg: string, min: string, sec: string, dir: string) => {
+      let d = parseFloat(deg) + parseFloat(min || "0") / 60 + parseFloat(sec || "0") / 3600;
+      if (dir.toUpperCase() === "S" || dir.toUpperCase() === "W") d = -d;
+      return d;
+    };
+    const lat = parseDms(dmsMatch[1], dmsMatch[2], dmsMatch[3], dmsMatch[4]);
+    const lng = parseDms(dmsMatch[5], dmsMatch[6], dmsMatch[7], dmsMatch[8]);
+    if (isValidLatLng(lat, lng)) return { lat, lng };
+  }
+
+  // 5. Standar koordinat desimal langsung: -6.2088, 106.8456 atau -6.2088 106.8456
+  const numMatch = str.match(/(-?\d{1,2}(?:\.\d+)?)[,\s/]+(-?\d{1,3}(?:\.\d+)?)/);
+  if (numMatch) {
+    const lat = parseFloat(numMatch[1]);
+    const lng = parseFloat(numMatch[2]);
+    if (isValidLatLng(lat, lng)) return { lat, lng };
+  }
+
+  return null;
+}
+
 // Master Titik Koordinat Toko Hijrahfood (Dapat diperluas atau disesuaikan)
 export const KNOWN_STORES: Record<string, StoreCoordinate> = {
   "Hijrahfood Cimuning": {
