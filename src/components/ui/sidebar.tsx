@@ -8,7 +8,7 @@ import { LayoutDashboard, CalendarDays, ClipboardPlus, ClipboardCheck, Activity,
 const allNavItems = [
   { href: "/", label: "Dashboard", icon: BarChart3, adminOnly: false },
   { href: "/survey/new", label: "Survey & Tracking", icon: Navigation, adminOnly: false, isMobileApp: true },
-  { href: "/survey", label: "Riwayat Survey", icon: FileText, adminOnly: false },
+  { href: "/survey", label: "Dashboard Survey", icon: FileText, adminOnly: false },
   { href: "/realisasi", label: "Realisasi", icon: TrendingUp, adminOnly: false },
   { href: "/activity", label: "Riwayat Aktivasi", icon: History, adminOnly: false },
   { href: "/submissions/new", label: "Form Pengajuan", icon: ClipboardPlus, adminOnly: false },

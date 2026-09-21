@@ -7,7 +7,7 @@ import SurveyMap from "@/components/survey/survey-map";
 import EmailReportButton from "@/components/survey/email-report-button";
 import WhatsAppReportButton from "@/components/survey/whatsapp-report-button";
 import { parseUtcDate, formatDurationMs } from "@/lib/utils";
-import { ArrowLeft, Clock, Route, MapPin, Camera, Download, ShieldCheck, Building2 } from "lucide-react";
+import { ArrowLeft, Clock, Route, MapPin, Camera, Download, ShieldCheck, Building2, AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +164,51 @@ export default async function SurveyDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
       </div>
+
+      {/* Keterangan Titik / Tempat Berulang jika Terdeteksi */}
+      {route.overlaps && route.overlaps.length > 0 && (
+        <div className="bg-amber-50/80 rounded-2xl p-5 border border-amber-200 shadow-sm space-y-3 text-xs text-amber-900">
+          <div className="font-bold text-sm text-amber-950 flex items-center gap-2">
+            <AlertTriangle size={18} className="text-amber-600 flex-shrink-0" />
+            <span>Keterangan: Terdeteksi Titik / Lokasi yang Sama ({route.overlaps.length} rute berulang)</span>
+          </div>
+          <p className="text-amber-800 leading-relaxed">
+            Rute survei ini melewati atau mengambil foto di titik koordinat yang sama / tumpang tindih (&le; 150m) dengan survei sebelumnya dari toko ini:
+          </p>
+          <div className="space-y-2">
+            {route.overlaps.map((ov: any, idx: number) => (
+              <div
+                key={idx}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white/80 p-3 rounded-xl border border-amber-200/80"
+              >
+                <div>
+                  <p className="font-bold text-slate-900">
+                    Survei #{ov.otherRouteId} ({ov.otherRouteType === "mailer" ? "Sebar Mailer" : "Observasi"})
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {new Date(ov.otherRouteDate).toLocaleDateString("id-ID", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })} • PIC: {ov.otherPicName || "-"} • Selisih jarak terdekat: <strong className="text-amber-900">±{ov.distanceMeters} meter</strong>
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Titik koordinat: <code>{ov.lat.toFixed(5)}, {ov.lng.toFixed(5)}</code>
+                  </p>
+                </div>
+
+                <Link
+                  href={`/survey/${ov.otherRouteId}`}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 self-start sm:self-center"
+                >
+                  Buka Survei #{ov.otherRouteId} →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Peta Rute Strava-Style */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-3">

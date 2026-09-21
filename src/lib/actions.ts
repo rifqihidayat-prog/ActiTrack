@@ -514,6 +514,29 @@ export async function getSurveyRoutes() {
     orderBy: [desc(surveyRoutes.createdAt)],
   });
 }
+
+export async function getSurveyRoutesWithDetails() {
+  const store = await getUserStore();
+  return await db.query.surveyRoutes.findMany({
+    where: store ? eq(surveyRoutes.storeName, store) : undefined,
+    with: {
+      waypoints: {
+        columns: { lat: true, lng: true, timestamp: true },
+      },
+      photos: {
+        columns: { id: true, lat: true, lng: true, caption: true, timestamp: true },
+      },
+    },
+    orderBy: [desc(surveyRoutes.createdAt)],
+  });
+}
+
+export async function getSurveyDashboardAnalytics(selectedMonth: string = "all") {
+  const routes = await getSurveyRoutesWithDetails();
+  const { buildSurveyDashboardData } = await import("@/lib/survey-analytics");
+  return buildSurveyDashboardData(routes as any, selectedMonth);
+}
+
 export async function getSurveyRouteById(id: number) {
   const route = await db.query.surveyRoutes.findFirst({ where: eq(surveyRoutes.id, id), with: { waypoints: true, photos: true } });
   const store = await getUserStore();
@@ -526,6 +549,22 @@ export async function getSurveyRouteById(id: number) {
     }
     if ((!healed.totalDistance || healed.totalDistance <= 0) && healed.waypoints.length >= 2) {
       healed.totalDistance = trackDistance(healed.waypoints);
+    }
+    // Cek titik/area yang sama (overlap) dengan survei toko yang sama
+    try {
+      const otherRoutes = await db.query.surveyRoutes.findMany({
+        where: eq(surveyRoutes.storeName, route.storeName),
+        with: {
+          waypoints: { columns: { lat: true, lng: true, timestamp: true } },
+          photos: { columns: { id: true, lat: true, lng: true, caption: true, timestamp: true } },
+        },
+      });
+      const { analyzeRouteOverlaps } = await import("@/lib/survey-analytics");
+      const { routeOverlapMap } = analyzeRouteOverlaps(otherRoutes as any);
+      healed.overlaps = routeOverlapMap[route.id] || [];
+    } catch (err) {
+      console.warn("Could not compute route overlaps:", err);
+      healed.overlaps = [];
     }
     return healed;
   }

@@ -264,15 +264,6 @@ export async function buildDocx(route: any, mapB64: string, customStore?: any): 
     : "-";
   const typeStr = route.type === "observasi" ? "Observasi / Pengenalan Toko" : route.type === "mailer" ? "Sebar Mailer / Brosur" : route.type;
 
-  let gmapsUrl = "";
-  if (waypoints.length >= 2) {
-    const waypointStr = waypoints.map((w: any) => `${w.lat},${w.lng}`).join("/");
-    const lats = waypoints.map((w: any) => w.lat);
-    const lngs = waypoints.map((w: any) => w.lng);
-    const cLat = ((Math.min(...lats) + Math.max(...lats)) / 2).toFixed(6);
-    const cLng = ((Math.min(...lngs) + Math.max(...lngs)) / 2).toFixed(6);
-    gmapsUrl = `https://www.google.com/maps/dir/${waypointStr}/@${cLat},${cLng},15z`;
-  }
 
   const children: (Paragraph | Table)[] = [];
 
@@ -324,15 +315,8 @@ export async function buildDocx(route: any, mapB64: string, customStore?: any): 
     children.push(new Paragraph({
       children: [new ImageRun({ type: "png", data: Buffer.from(mapB64, "base64"), transformation: { width: 470, height: 269 } })],
       alignment: AlignmentType.CENTER,
-      spacing: { before: 80, after: 40 },
+      spacing: { before: 80, after: 120 },
     }));
-    if (gmapsUrl) {
-      children.push(new Paragraph({
-        children: [new TextRun({ text: "Buka rute ini di Google Maps → ", size: 18, color: "1a73e8" }), new TextRun({ text: gmapsUrl, size: 16, color: "666666" })],
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 100 },
-      }));
-    }
   } else {
     children.push(textP("Data rute perjalanan tidak tersedia (minimal 2 titik waypoint diperlukan).", { size: 20, color: "666666" }));
   }
