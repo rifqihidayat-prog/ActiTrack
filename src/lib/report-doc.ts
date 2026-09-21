@@ -31,10 +31,10 @@ function calcZoom(waypoints: any[], imgW: number, imgH: number): number {
 }
 
 const TILE_MIRRORS = [
-  "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-  "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-  "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-  "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+  "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  "https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+  "https://b.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png",
+  "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
 ];
 
 async function fetchTile(url: string): Promise<Buffer | null> {
@@ -204,13 +204,16 @@ function sectionTitle(text: string): Paragraph {
   });
 }
 
+const PAGE_CONTENT_WIDTH = 9638; // Lebar area cetak A4 dalam DXA (11906 - 2 * 1134)
+
 function cell(children: Paragraph[], opts: { fill?: string; border?: any; width?: number; span?: number; vertical?: boolean } = {}): TableCell {
   return new TableCell({
     children,
     shading: opts.fill ? { type: ShadingType.CLEAR, fill: opts.fill } : undefined,
     borders: opts.border,
-    width: opts.width !== undefined ? { size: opts.width, type: WidthType.PERCENTAGE } : undefined,
+    width: opts.width !== undefined ? { size: opts.width, type: WidthType.DXA } : undefined,
     columnSpan: opts.span,
+    margins: { top: 100, bottom: 100, left: 140, right: 140 },
     verticalAlign: opts.vertical === false ? VerticalAlign.TOP : VerticalAlign.CENTER,
   });
 }
@@ -292,20 +295,27 @@ export async function buildDocx(route: any, mapB64: string, customStore?: any): 
     ["Status", route.status === "completed" ? "Selesai" : route.status],
   ].map(([k, v]) => new TableRow({
     children: [
-      cell([textP(k, { bold: true })], { fill: "F5F5F5", border: cellBorder, width: 30 }),
-      cell([textP(String(v ?? "-"))], { border: cellBorder, width: 70 }),
+      cell([textP(k, { bold: true })], { fill: "F5F5F5", border: cellBorder, width: 2800 }),
+      cell([textP(String(v ?? "-"))], { border: cellBorder, width: 6838 }),
     ],
   }));
-  children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: infoRows }));
+  children.push(new Table({
+    width: { size: PAGE_CONTENT_WIDTH, type: WidthType.DXA },
+    columnWidths: [2800, 6838],
+    alignment: AlignmentType.CENTER,
+    rows: infoRows,
+  }));
 
   children.push(sectionTitle("II. Ringkasan Perjalanan"));
   children.push(new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: PAGE_CONTENT_WIDTH, type: WidthType.DXA },
+    columnWidths: [3212, 3212, 3214],
+    alignment: AlignmentType.CENTER,
     rows: [new TableRow({
       children: [
-        cell([textP(endTime && startTime ? durStr : "-", { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Durasi Perjalanan", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
-        cell([textP(`${(distance / 1000).toFixed(2)} km`, { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Total Jarak Tempuh", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 33 }),
-        cell([textP(`${photos.length} Titik`, { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Total Titik Foto", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 34 }),
+        cell([textP(endTime && startTime ? durStr : "-", { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Durasi Perjalanan", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 3212 }),
+        cell([textP(`${(distance / 1000).toFixed(2)} km`, { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Total Jarak Tempuh", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 3212 }),
+        cell([textP(`${photos.length} Titik`, { bold: true, size: 36, align: AlignmentType.CENTER }), textP("Total Titik Foto", { size: 18, color: "444444", align: AlignmentType.CENTER })], { border: cellBorder, width: 3214 }),
       ],
     })],
   }));
@@ -327,27 +337,32 @@ export async function buildDocx(route: any, mapB64: string, customStore?: any): 
   if (reportPhotos.length > 0) {
     const header = new TableRow({
       children: [
-        cell([textP("No", { bold: true, size: 18, color: "FFFFFF", align: AlignmentType.CENTER })], { fill: "333333", border: cellBorder, width: 10 }),
-        cell([textP("Keterangan Foto", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
-        cell([textP("Latitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
-        cell([textP("Longitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 30 }),
+        cell([textP("No", { bold: true, size: 18, color: "FFFFFF", align: AlignmentType.CENTER })], { fill: "333333", border: cellBorder, width: 900 }),
+        cell([textP("Keterangan Foto", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 3538 }),
+        cell([textP("Latitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 2600 }),
+        cell([textP("Longitude", { bold: true, size: 18, color: "FFFFFF" })], { fill: "333333", border: cellBorder, width: 2600 }),
       ],
     });
     const rows = reportPhotos.map((p: any, i: number) => new TableRow({
       children: [
-        cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 10 }),
-        cell([textP(p.caption || `Foto #${i + 1}`, { size: 18 })], { border: lightCellBorder, width: 30 }),
-        cell([textP(Number(p.lat).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
-        cell([textP(Number(p.lng).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 30 }),
+        cell([textP(String(i + 1), { align: AlignmentType.CENTER, size: 18 })], { border: lightCellBorder, width: 900 }),
+        cell([textP(p.caption || `Foto #${i + 1}`, { size: 18 })], { border: lightCellBorder, width: 3538 }),
+        cell([textP(Number(p.lat).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 2600 }),
+        cell([textP(Number(p.lng).toFixed(6), { size: 18 })], { border: lightCellBorder, width: 2600 }),
       ],
     }));
     const coordSummary = photos.length > PHOTO_LIMIT
       ? `Menampilkan ${PHOTO_LIMIT} titik koordinat foto utama (sesuai 10 foto terlampir). Total ${photos.length} titik foto tersimpan lengkap di sistem.`
       : `Total ${photos.length} titik koordinat foto tercatat selama survey lapangan.`;
     rows.push(new TableRow({
-      children: [cell([textP(coordSummary, { size: 18, color: "666666" })], { span: 4, border: lightCellBorder })],
+      children: [cell([textP(coordSummary, { size: 18, color: "666666" })], { span: 4, width: PAGE_CONTENT_WIDTH, border: lightCellBorder })],
     }));
-    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
+    children.push(new Table({
+      width: { size: PAGE_CONTENT_WIDTH, type: WidthType.DXA },
+      columnWidths: [900, 3538, 2600, 2600],
+      alignment: AlignmentType.CENTER,
+      rows: [header, ...rows],
+    }));
   } else {
     children.push(textP("Tidak ada titik koordinat foto yang direkam selama survey.", { size: 20, color: "666666" }));
   }
@@ -362,16 +377,24 @@ export async function buildDocx(route: any, mapB64: string, customStore?: any): 
         const buf = await photoBuffer(p.photoData);
         const inner: Paragraph[] = buf
           ? [
-              new Paragraph({ children: [new ImageRun({ type: "jpg", data: buf, transformation: { width: 280, height: 210 } })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
+              new Paragraph({ children: [new ImageRun({ type: "jpg", data: buf, transformation: { width: 290, height: 218 } })], alignment: AlignmentType.CENTER, spacing: { after: 40 } }),
               new Paragraph({ children: [new TextRun({ text: p.caption || "Foto dokumentasi", size: 18 })], alignment: AlignmentType.CENTER, spacing: { after: 20 } }),
               new Paragraph({ children: [new TextRun({ text: `Lokasi: ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`, size: 16, color: "666666" })], alignment: AlignmentType.CENTER, spacing: { after: 80 } }),
             ]
           : [textP("(Foto gagal dimuat)", { size: 18, color: "666666", align: AlignmentType.CENTER })];
-        cells.push(cell(inner, { width: 50 }));
+        cells.push(cell(inner, { width: 4819 }));
+      }
+      if (cells.length === 1) {
+        cells.push(cell([new Paragraph({})], { width: 4819 }));
       }
       photoRows.push(new TableRow({ children: cells }));
     }
-    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: photoRows }));
+    children.push(new Table({
+      width: { size: PAGE_CONTENT_WIDTH, type: WidthType.DXA },
+      columnWidths: [4819, 4819],
+      alignment: AlignmentType.CENTER,
+      rows: photoRows,
+    }));
     if (photos.length > PHOTO_LIMIT) {
       children.push(textP(`* Catatan: Menampilkan ${PHOTO_LIMIT} foto utama dalam laporan Word (sinkron dengan koordinat Poin IV). Total ${photos.length} titik foto lengkap tersimpan dalam sistem aplikasi ActiTrack.`, { size: 18, color: "666666", align: AlignmentType.CENTER }));
     }
